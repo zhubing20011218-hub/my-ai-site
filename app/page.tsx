@@ -21,37 +21,39 @@ import {
 } from "@/components/ui/dialog"
 import { Wallet, MessageSquare, QrCode, Ticket } from "lucide-react"
 
-import { useChat } from "@ai-sdk/react"
+import { useChat } from "@ai-sdk/react" // 引用最新的 SDK
 import Link from "next/link"
-import { useState, useEffect } from "react" // 引入 useEffect 用来初始化
+import { useState, useEffect } from "react"
 import ReactMarkdown from 'react-markdown'
-import { supabase } from "@/lib/supabase" // 引入刚才写的数据库工具
+import { supabase } from "@/lib/supabase" 
 
 export default function Home() {
   const [model, setModel] = useState("gemini")
   const [balance, setBalance] = useState(0)
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [userId, setUserId] = useState("") // 存储当前用户的身份ID
+  const [userId, setUserId] = useState("")
+  
+  // 🔧 手动挡模式：自己管理输入框
+  const [input, setInput] = useState("") 
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+ // 🤖 AI 核心：使用 append 来手动发送消息
+  // @ts-ignore
+  const { messages, append, isLoading } = useChat({
+    api: '/api/chat',
     body: { model: model }
-  })
+  } as any) as any
 
   // 🔄 1. 网页加载时：初始化用户并同步余额
   useEffect(() => {
     const initUser = async () => {
-      // A. 尝试从浏览器缓存找 ID
       let id = localStorage.getItem("my_ai_user_id")
-      
-      // B. 如果没有（新用户），生成一个随机 ID
       if (!id) {
         id = "user_" + Math.random().toString(36).substr(2, 9)
         localStorage.setItem("my_ai_user_id", id)
       }
       setUserId(id)
 
-      // C. 去 Supabase 数据库查这个人的钱
       const { data, error } = await supabase
         .from('profiles')
         .select('balance')
@@ -59,22 +61,20 @@ export default function Home() {
         .single()
 
       if (data) {
-        // 如果查到了，把钱显示出来
         setBalance(data.balance)
       } else {
-        // 如果没查到（说明是纯新用户），在数据库里建个档
-        await supabase.from('profiles').insert([{ id: id, balance: 0 }])
-        setBalance(0)
+        if (error?.code === 'PGRST116') {
+             await supabase.from('profiles').insert([{ id: id, balance: 0 }])
+             setBalance(0)
+        }
       }
     }
-
     initUser()
   }, [])
 
-  // 💰 2. 充值功能（带数据库更新）
+  // 💰 2. 充值功能
   const handleRecharge = async () => {
     const code = rechargeCode.trim().toUpperCase()
-    
     const validCodes: Record<string, number> = {
       "TIYAN-2026": 10,
       "PLUS-8888": 50,
@@ -85,11 +85,8 @@ export default function Home() {
     if (validCodes[code]) {
       const amount = validCodes[code]
       const newBalance = balance + amount
-
-      // A. 更新界面
       setBalance(newBalance)
       
-      // B. 更新数据库 (永久保存)
       await supabase
         .from('profiles')
         .update({ balance: newBalance })
@@ -103,14 +100,13 @@ export default function Home() {
     }
   }
 
-  // 💸 3. 消费功能（带数据库扣费）
+  // 💸 3. 发送消息（手动挡逻辑）
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     
+    // 扣费检查
     const prices: Record<string, number> = {
-      'gemini': 0,
-      'gpt4': 5,
-      'sora': 20
+      'gemini': 0, 'gpt4': 5, 'sora': 20
     }
     const cost = prices[model]
 
@@ -121,25 +117,21 @@ export default function Home() {
       return
     }
 
-    // A. 扣费逻辑
+    // 扣费
     const newBalance = balance - cost
-    setBalance(newBalance) // 更新界面
-    
-    // B. 更新数据库
-    await supabase
-      .from('profiles')
-      .update({ balance: newBalance })
-      .eq('id', userId)
+    setBalance(newBalance)
+    await supabase.from('profiles').update({ balance: newBalance }).eq('id', userId)
 
     if (model === 'sora') {
       alert(`💸 扣费成功！(数据库已同步)`)
       return
     }
 
-    handleSubmit(e)
+    // 🚀 核心修改：使用 append 发送消息，并清空输入框
+    await append({ role: 'user', content: input }) 
+    setInput("") // 发送完清空输入框
   }
 
-  // 下面的界面代码(return部分)跟之前完全一样
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       <nav className="w-full bg-white border-b shadow-sm sticky top-0 z-50">
@@ -207,7 +199,7 @@ export default function Home() {
           
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
              {messages.length === 0 && <div className="text-center text-gray-400 mt-20">👋 欢迎回来！</div>}
-             {messages.map(m => (
+             {messages.map((m: any) => (
                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                  <div className={`rounded-2xl px-5 py-3 max-w-[85%] text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
                    <ReactMarkdown>{m.content}</ReactMarkdown>
@@ -219,7 +211,12 @@ export default function Home() {
 
           <div className="p-4 bg-white border-t">
             <form onSubmit={handleSend} className="flex gap-2">
-              <Input value={input} onChange={handleInputChange} className="flex-1" placeholder="说点什么..." />
+              <Input 
+                 value={input} 
+                 onChange={(e) => setInput(e.target.value)} // 手动更新输入框
+                 className="flex-1" 
+                 placeholder="说点什么..." 
+              />
               <Button type="submit" disabled={isLoading}>发送</Button>
             </form>
           </div>
