@@ -18,10 +18,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Sparkles, Loader2 } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// ✨ 组件1：复制按钮
+// ✨ 组件1：复制按钮 (不变)
 function CopyButton({ content }: { content: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const handleCopy = async () => {
@@ -41,50 +41,89 @@ function CopyButton({ content }: { content: string }) {
   )
 }
 
-// 🧠 组件2：真实思维链 (Real Thinking)
-// 接收真实的 steps 数据，不再是死循环
-function Thinking({ steps }: { steps: string[] }) {
-  const [currentStepIndex, setCurrentStepIndex] = useState(0)
+// 🧠 组件2：终端式思维链 (Terminal Thinking)
+// 核心逻辑：顺序执行 1->2->3->4，带子任务闪烁
+function Thinking({ plan }: { plan: string[] }) {
+  const [currentStep, setCurrentStep] = useState(0)
+  const [logs, setLogs] = useState<string[]>([]) // 模拟子任务日志
 
+  // 模拟的子任务库 (假装在做很具体的微操)
+  const subTasks = [
+    "分配内存堆栈...", "挂载上下文...", "验证Token有效性...", 
+    "连接向量数据库...", "执行余弦相似度搜索...", "过滤冗余信息...",
+    "构建推理树...", "评估置信度...", "优化语言模型参数...",
+    "渲染Markdown流...", "最终格式校验..."
+  ]
+
+  // 主流程控制：每 800ms 走完一个大步骤
   useEffect(() => {
-    // 如果没有步骤，显示默认的
-    if (!steps || steps.length === 0) return;
+    if (currentStep < 4) {
+      const timer = setTimeout(() => {
+        setCurrentStep(prev => prev + 1)
+      }, 1500) // 这里控制整体速度，1.5秒一步
+      return () => clearTimeout(timer)
+    }
+  }, [currentStep])
 
-    // 每 1.5 秒切换一个步骤
+  // 子任务控制：疯狂刷日志
+  useEffect(() => {
+    if (currentStep >= 4) return;
     const interval = setInterval(() => {
-      setCurrentStepIndex((prev) => {
-        // 如果走到最后一步，就停在最后一步，不要循环了，等待正文出来
-        if (prev >= steps.length - 1) return prev; 
-        return prev + 1;
-      })
-    }, 1500)
+      const randomLog = subTasks[Math.floor(Math.random() * subTasks.length)]
+      setLogs(prev => [randomLog, ...prev].slice(0, 3)) // 只保留最近3条
+    }, 200) // 200ms 刷一条微操
     return () => clearInterval(interval)
-  }, [steps])
-
-  const currentText = steps && steps.length > 0 ? steps[currentStepIndex] : "正在分析意图..."
+  }, [currentStep])
 
   return (
-    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 my-4">
+    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 my-4 w-full max-w-[85%]">
       <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
-        <Sparkles size={16} className="text-blue-500 animate-pulse" />
-      </div>
-      <div className="bg-white border border-blue-100 rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
-        {/* 动态加载圈 */}
         <Loader2 size={16} className="text-blue-500 animate-spin" />
-        
-        <div className="flex flex-col">
-           <span className="text-sm text-blue-600 font-medium transition-all duration-300">
-             {currentText}
-           </span>
-           {/* 显示进度条小点 */}
-           <div className="flex gap-1 mt-1">
-             {steps.map((_, idx) => (
-               <div 
-                 key={idx} 
-                 className={`h-1 rounded-full transition-all duration-300 ${idx === currentStepIndex ? 'w-4 bg-blue-500' : 'w-1 bg-blue-200'}`}
-               />
-             ))}
-           </div>
+      </div>
+      
+      {/* 终端卡片风格 */}
+      <div className="bg-slate-50 border border-blue-100 rounded-xl p-4 shadow-sm w-full font-mono text-sm">
+        <div className="flex items-center gap-2 text-xs text-gray-400 mb-3 border-b border-gray-100 pb-2">
+          <Terminal size={12} />
+          <span>AI Process Monitor</span>
+        </div>
+
+        <div className="space-y-3">
+          {plan.map((stepText, index) => {
+            const isDone = index < currentStep;
+            const isActive = index === currentStep;
+            const isPending = index > currentStep;
+
+            return (
+              <div key={index} className={`flex flex-col transition-all duration-300 ${isPending ? 'opacity-30' : 'opacity-100'}`}>
+                {/* 主步骤行 */}
+                <div className="flex items-center gap-3">
+                  <div className={`
+                    w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border
+                    ${isDone ? 'bg-green-500 border-green-500 text-white' : ''}
+                    ${isActive ? 'bg-blue-600 border-blue-600 text-white animate-pulse' : ''}
+                    ${isPending ? 'bg-white border-gray-300 text-gray-300' : ''}
+                  `}>
+                    {isDone ? <Check size={12} /> : index + 1}
+                  </div>
+                  <span className={`font-medium ${isActive ? 'text-blue-700' : isDone ? 'text-gray-600' : 'text-gray-400'}`}>
+                    {stepText}
+                  </span>
+                </div>
+
+                {/* 活跃步骤下的子任务日志 (1.1, 1.2...) */}
+                {isActive && (
+                  <div className="ml-8 mt-1 space-y-1">
+                    {logs.map((log, i) => (
+                      <div key={i} className="text-[10px] text-gray-400 flex items-center gap-1 animate-in slide-in-from-left-2 fade-in duration-300">
+                        <ChevronRight size={8} /> {log}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
@@ -96,8 +135,9 @@ export default function Home() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   
-  // 🆕 新增：专门存储 AI 的思考步骤
-  const [thinkingSteps, setThinkingSteps] = useState<string[]>([])
+  // 🆕 默认步骤：防止卡顿，开局直接有东西看
+  const defaultSteps = ["正在解析用户意图...", "正在构建检索策略...", "正在执行逻辑推理...", "正在生成最终回复..."]
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>(defaultSteps)
   
   const [model, setModel] = useState("gemini")
   const [balance, setBalance] = useState(99999) 
@@ -121,25 +161,26 @@ export default function Home() {
     setMessages(prev => [...prev, userMsg])
     setInput("")
     setIsLoading(true)
-    setThinkingSteps(["正在启动AI大脑..."]) // 初始状态
+    
+    // 🔥 关键修改：重置步骤为默认，确保 UI 立刻有反应
+    setThinkingSteps(defaultSteps) 
 
     try {
-      // 🚀 第一步：先呼叫“快脑”，获取针对这个问题的真实计划
-      // 这个请求非常快 (0.5秒左右)
+      // 🚀 快脑：去获取真实计划 (静默更新)
       fetch('/api/plan', {
         method: 'POST',
         body: JSON.stringify({ message: userMsg.content })
       })
       .then(res => res.text())
       .then(text => {
-        // 如果获取成功，比如 "检索天气|分析数据|绘图"，就切割成数组
         if (text && text.includes('|')) {
+          // 拿到真实计划后，替换掉默认的
           setThinkingSteps(text.split('|'))
         }
       })
-      .catch(err => console.log("快脑偷懒了，使用默认计划"))
+      .catch(() => {}) // 失败了就用默认的，不管它
 
-      // 🚀 第二步：同时呼叫“慢脑”，获取正文
+      // 🚀 慢脑：获取回复
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,11 +217,10 @@ export default function Home() {
       alert("错误: " + error.message)
     } finally {
       setIsLoading(false)
-      setThinkingSteps([]) // 思考结束，清空步骤
     }
   }
 
-  // 充值逻辑保持不变
+  // 充值逻辑
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
@@ -261,8 +301,8 @@ export default function Home() {
                </div>
              ))}
 
-             {/* 👇 核心升级：传入真实的 thinkingSteps */}
-             {isLoading && <Thinking steps={thinkingSteps} />}
+             {/* 👇 只有在真正加载时才显示 Thinking */}
+             {isLoading && <Thinking plan={thinkingSteps} />}
              
              <div ref={messagesEndRef} />
           </div>
