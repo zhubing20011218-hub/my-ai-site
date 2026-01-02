@@ -85,37 +85,19 @@ export default function Home() {
   }
 
   // 3. 发送消息 (更新价格逻辑)
-  const handleSend = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // ✅ 这是全新的、绝对安全的发送函数
+  const handleSend = async (e: any) => {
+    e?.preventDefault?.(); // 防止页面刷新
     
-    // 💰 更新后的价格表
-    const prices: Record<string, number> = {
-      'gemini': 0.1, 
-      'gpt4': 0.1, 
-      'sora': 0.25
-    }
-    const cost = prices[model]
+    // 如果输入框是空的，什么都不做
+    if (!input.trim()) return;
 
-    if (balance < cost) {
-      if (confirm(`❌ 余额不足！本模型需要 ¥${cost}，当前 ¥${balance}。\n是否去充值？`)) {
-        setIsDialogOpen(true)
-      }
-      return
-    }
-
-    const newBalance = Number((balance - cost).toFixed(2)) // 防止小数精度问题
-    setBalance(newBalance)
+    // 1. 直接把消息发给 AI (不查余额，不扣费)
+    await append({ role: 'user', content: input });
     
-
-    if (model === 'sora') {
-      alert(`💸 扣费成功！(演示模式: Sora暂未接入真实API)`)
-      return
-    }
-
-    await append({ role: 'user', content: input }) 
-    setInput("") 
+    // 2. 清空输入框
+    setInput("");
   }
-
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">
       {/* 顶部导航栏 */}
