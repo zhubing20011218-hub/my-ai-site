@@ -18,42 +18,64 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User } from "lucide-react" // 👈 新增了图标
+import { Wallet, Copy, Check, Bot, User, Sparkles } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// ✨ 小组件：复制按钮
-// 把它单独提出来，为了复用和状态管理
+// ✨ 组件1：复制按钮 (保持不变)
 function CopyButton({ content }: { content: string }) {
   const [isCopied, setIsCopied] = useState(false)
-
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(content)
       setIsCopied(true)
-      setTimeout(() => setIsCopied(false), 2000) // 2秒后变回原样
-    } catch (err) {
-      console.error("复制失败", err)
-    }
+      setTimeout(() => setIsCopied(false), 2000)
+    } catch (err) { console.error("复制失败", err) }
   }
-
   return (
     <button 
       onClick={handleCopy}
       className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors py-1 px-2 rounded hover:bg-gray-100"
       title="复制全部内容"
     >
-      {isCopied ? (
-        <>
-          <Check size={14} className="text-green-500" />
-          <span className="text-green-500">已复制</span>
-        </>
-      ) : (
-        <>
-          <Copy size={14} />
-          <span>复制</span>
-        </>
-      )}
+      {isCopied ? <><Check size={14} className="text-green-500"/><span className="text-green-500">已复制</span></> : <><Copy size={14}/><span>复制</span></>}
     </button>
+  )
+}
+
+// 🧠 组件2：动态思维链 (新增!)
+// 让 AI 看起来像是在真的思考，而不是卡住了
+function Thinking() {
+  const [step, setStep] = useState(0)
+  const steps = [
+    "正在分析您的意图...", 
+    "正在检索全球知识库...", 
+    "正在构建逻辑框架...", 
+    "正在组织语言..."
+  ]
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStep((prev) => (prev + 1) % steps.length)
+    }, 2000) // 每2秒换一句话
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
+        <Sparkles size={16} className="text-blue-500 animate-pulse" />
+      </div>
+      <div className="bg-white border border-blue-100 rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
+        <div className="flex gap-1 h-2 items-center">
+          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
+        </div>
+        <span className="text-sm text-blue-600 font-medium min-w-[140px] transition-all duration-300">
+          {steps[step]}
+        </span>
+      </div>
+    </div>
   )
 }
 
@@ -66,12 +88,10 @@ export default function Home() {
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
-  // 自动滚动
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+  }, [messages, isLoading]) // isLoading 变了也要滚到底部
 
-  // 初始化用户ID
   useEffect(() => {
     if (!localStorage.getItem("my_ai_user_id")) {
       localStorage.setItem("my_ai_user_id", "user_" + Math.random().toString(36).substr(2, 9))
@@ -131,7 +151,6 @@ export default function Home() {
     }
   }
 
-  // 充值逻辑
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
@@ -179,7 +198,7 @@ export default function Home() {
             </Select>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 scroll-smooth">
              {messages.length === 0 && (
                 <div className="text-center mt-20 text-gray-400">
                   <div className="text-6xl mb-4">🧊</div>
@@ -188,48 +207,22 @@ export default function Home() {
              )}
              
              {messages.map((m, i) => (
-               <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                 
-                 {/* AI 头像 */}
+               <div key={i} className={`flex gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                  {m.role !== 'user' && (
                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-1">
                      <Bot size={16} className="text-blue-600" />
                    </div>
                  )}
-
-                 <div 
-                   className={`
-                     rounded-2xl px-5 py-3 max-w-[85%] shadow-sm overflow-hidden
-                     ${m.role === 'user' 
-                       ? 'bg-blue-600 text-white' 
-                       : 'bg-white border border-gray-100 text-gray-800'
-                     }
-                   `}
-                 >
-                   {/* 渲染内容 */}
-                   <div className={`
-                       prose prose-sm sm:prose-base max-w-none break-words leading-relaxed
-                       prose-p:my-2 prose-p:leading-7 
-                       prose-headings:font-bold prose-headings:my-3 prose-headings:text-gray-900
-                       prose-li:my-1
-                       prose-strong:font-bold
-                       prose-table:border prose-table:shadow-sm prose-table:rounded-lg
-                       prose-th:bg-gray-50 prose-th:p-3 prose-th:text-gray-700
-                       prose-td:p-3 prose-td:border-t
-                       ${m.role === 'user' ? 'prose-invert prose-strong:text-white' : 'prose-strong:text-blue-600'}
-                   `}>
+                 <div className={`rounded-2xl px-5 py-3 max-w-[85%] shadow-sm overflow-hidden ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-100 text-gray-800'}`}>
+                   <div className={`prose prose-sm sm:prose-base max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-headings:font-bold prose-headings:my-3 prose-headings:text-gray-900 prose-li:my-1 prose-strong:font-bold prose-table:border prose-table:shadow-sm prose-table:rounded-lg prose-th:bg-gray-50 prose-th:p-3 prose-th:text-gray-700 prose-td:p-3 prose-td:border-t ${m.role === 'user' ? 'prose-invert prose-strong:text-white' : 'prose-strong:text-blue-600'}`}>
                      <ReactMarkdown>{m.content}</ReactMarkdown>
                    </div>
-
-                   {/* 👇 只有 AI 的消息才显示底部工具栏 */}
                    {m.role !== 'user' && (
                      <div className="mt-2 pt-2 border-t border-gray-50 flex justify-end">
                        <CopyButton content={m.content} />
                      </div>
                    )}
                  </div>
-
-                 {/* 用户头像 */}
                  {m.role === 'user' && (
                    <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
                      <User size={16} className="text-gray-500" />
@@ -238,21 +231,9 @@ export default function Home() {
                </div>
              ))}
 
-             {isLoading && (
-               <div className="flex gap-3">
-                 <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <Bot size={16} className="text-blue-600" />
-                 </div>
-                 <div className="bg-white border border-gray-100 rounded-2xl px-5 py-3 shadow-sm flex items-center">
-                    <span className="flex gap-1">
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></span>
-                    </span>
-                    <span className="text-xs text-gray-400 ml-2">正在思考...</span>
-                 </div>
-               </div>
-             )}
+             {/* 👇 核心变化在这里：使用了 Thinking 组件 */}
+             {isLoading && <Thinking />}
+             
              <div ref={messagesEndRef} />
           </div>
 
