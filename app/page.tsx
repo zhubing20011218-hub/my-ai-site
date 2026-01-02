@@ -69,8 +69,30 @@ export default function Home() {
       }
 
       // 处理回复
-      const data = await response.text() // 暂时用一次性接收，更稳
-      setMessages(prev => [...prev, { role: 'assistant', content: data }])
+      // ✅ 替换部分开始：恢复流式读取
+      if (!response.body) return
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      
+      // 先放一个空的 AI 消息占位
+      setMessages(prev => [...prev, { role: 'assistant', content: "" }])
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const text = decoder.decode(value, { stream: true })
+        
+        // 实时更新最后一条消息
+        setMessages(prev => {
+          const newMsgs = [...prev]
+          const lastMsg = newMsgs[newMsgs.length - 1]
+          if (lastMsg.role === 'assistant') {
+            lastMsg.content += text
+          }
+          return newMsgs
+        })
+      }
+      // ✅ 替换部分结束
 
     } catch (error: any) {
       console.error("发送失败:", error)
