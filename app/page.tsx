@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
   Wallet, Copy, Check, Bot, User, Loader2, Terminal, Square, Send, 
-  Paperclip, X, FileCode, Lock, LogOut, Shield, History, Coins, AlertCircle
+  Paperclip, X, FileCode, Lock, LogOut, Shield, History, Coins, AlertCircle, PartyPopper
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -48,12 +48,12 @@ function Thinking({ plan }: { plan: string[] }) {
 }
 
 // ==========================================
-// 👤 极简认证页面（修复拼写错误）
+// 👤 极简认证页面
 // ==========================================
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
-  const [password, setPassword] = useState(""); // ✅ 确保名字是 password
+  const [password, setPassword] = useState("");
   const [nickname, setNickname] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
   const [realCode, setRealCode] = useState("");
@@ -99,9 +99,24 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
           <Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-11" value={account} onChange={e=>setAccount(e.target.value)} />
           {isReg && <div className="flex gap-2"><Input placeholder="验证码" className="bg-slate-50 border-none h-11" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 text-xs">{count>0?`${count}s`:"获取"}</Button></div>}
           <Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11" value={password} onChange={e=>setPassword(e.target.value)} />
-          <Button className="w-full bg-slate-900 h-11 mt-2 transition-all" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"创建账户":"安全登录"}</Button>
+          <Button className="w-full bg-slate-900 h-11 mt-2 transition-all shadow-md active:scale-95" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"创建账户":"安全登录"}</Button>
         </form>
-        <button onClick={()=>setIsReg(!isReg)} className="text-xs text-blue-600 mt-6 hover:underline">{isReg ? "已有账号？去登录" : "没有账号？点击注册"}</button>
+
+        {/* ✨ 新增：吸引人的注册引导标注 */}
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse">
+            <PartyPopper size={14} className="animate-bounce" />
+            <span className="text-[11px] font-bold tracking-wide">新用户注册即送体验金！！！</span>
+            <PartyPopper size={14} className="animate-bounce [animation-delay:0.2s]" />
+          </div>
+          
+          <button 
+            onClick={()=>setIsReg(!isReg)} 
+            className="text-xs text-blue-600 font-medium hover:underline transition-all"
+          >
+            {isReg ? "已有账号？去登录" : "没有账号？点击注册"}
+          </button>
+        </div>
       </Card>
     </div>
   );
