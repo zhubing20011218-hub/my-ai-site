@@ -13,24 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "冰式AI站",
-  description: "你的智能AI助手",
-  manifest: "/manifest.json", // 👈 这一行是关键
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no", // 禁止缩放，像App一样
+  title: "Eureka AI", // ✅ 将这里修改为 Eureka 相关的标题
+  description: "Your intelligent AI partner powered by Eureka engine.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="zh">
+      <body>{children}</body>
     </html>
-  );
+  )
 }
