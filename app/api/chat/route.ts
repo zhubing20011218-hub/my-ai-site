@@ -1,32 +1,49 @@
 // @ts-nocheck
 import { google } from '@ai-sdk/google';
-import { generateText } from 'ai';
+import { streamText } from 'ai'; // 👈 换回流式，速度起飞！
 
-export const maxDuration = 60; // 付费版可以处理更长任务，延长时间限制
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
 
-    // 🏆 这里的名字来自你的 Google 后台
-    // 既然你付费了，这个最强模型现在应该为你敞开大门了！
+    // 🏆 1. 确认身份：使用最强模型 Gemini 3 Pro
     const modelName = 'gemini-3-pro-preview'; 
+    
+    // ⏰ 2. 注入灵魂：获取当前北京时间
+    const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    
+    // 📝 3. 设置系统人设 (System Prompt)
+    // 这里就是告诉它：你是谁，现在几点，你要怎么表现
+    const systemPrompt = `
+      你是由 Google 开发的最强 AI 模型 Gemini 3 Pro。
+      当前北京时间是：${now}。
+      你的回答必须准确、专业且即使。
+      请用中文回答。
+    `;
 
-    console.log(`🚀 正在呼叫尊贵的 Gemini 3 模型: ${modelName}...`);
+    console.log(`🚀 [真实调用] 正在请求模型: ${modelName}`);
+    console.log(`⏰ [系统时间] 已注入时间: ${now}`);
 
-    const result = await generateText({
+    // 🔥 4. 开启流式传输 (打字机效果)
+    const result = await streamText({
       model: google(modelName),
+      system: systemPrompt, // 把时间告诉它
       messages: messages,
     });
 
-    console.log("✅ Gemini 3 回复成功！");
-
-    return new Response(result.text);
+    // ✅ 5. 返回流数据 (适配你的前端)
+    // 使用 textStream 直接返回纯文本流，兼容性最好
+    return new Response(result.textStream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Transfer-Encoding': 'chunked',
+      },
+    });
 
   } catch (error: any) {
     console.error("❌ 报错详情:", error);
-    
-    // 如果刚付完款 Google 系统还在生效中（可能有几分钟延迟），会显示在这里
     return new Response(JSON.stringify({ 
       error: "调用失败", 
       details: error.message 
@@ -36,4 +53,3 @@ export async function POST(req: Request) {
     });
   }
 }
-// 强制更新标记: 启用 Gemini 3 Pro
