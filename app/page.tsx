@@ -1,4 +1,3 @@
-// 🚀 强制更新版本 v2.0 - 彻底移除 useChat 库
 "use client"
 
 import { useState, useEffect, useRef } from "react"
@@ -19,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Ticket } from "lucide-react"
+import { Wallet } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 export default function Home() {
@@ -29,20 +28,17 @@ export default function Home() {
   const [model, setModel] = useState("gemini")
   const [balance, setBalance] = useState(99999) 
   
-  // 滚动到底部
   const messagesEndRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // 初始化用户ID
   useEffect(() => {
     if (!localStorage.getItem("my_ai_user_id")) {
       localStorage.setItem("my_ai_user_id", "user_" + Math.random().toString(36).substr(2, 9))
     }
   }, [])
 
-  // ✅ 纯原生发送函数 (不依赖 ai-sdk，绝对稳！)
   const handleSend = async (e: any) => {
     e?.preventDefault()
     if (!input.trim() || isLoading) return
@@ -63,18 +59,14 @@ export default function Home() {
       })
 
       if (!response.ok) {
-        // 如果后端报错，尝试读取错误信息
         const errData = await response.json().catch(() => ({}))
         throw new Error(errData.error || "服务器连接失败")
       }
 
-      // 处理回复
-      // ✅ 替换部分开始：恢复流式读取
       if (!response.body) return
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       
-      // 先放一个空的 AI 消息占位
       setMessages(prev => [...prev, { role: 'assistant', content: "" }])
 
       while (true) {
@@ -82,7 +74,6 @@ export default function Home() {
         if (done) break
         const text = decoder.decode(value, { stream: true })
         
-        // 实时更新最后一条消息
         setMessages(prev => {
           const newMsgs = [...prev]
           const lastMsg = newMsgs[newMsgs.length - 1]
@@ -92,7 +83,6 @@ export default function Home() {
           return newMsgs
         })
       }
-      // ✅ 替换部分结束
 
     } catch (error: any) {
       console.error("发送失败:", error)
@@ -102,7 +92,6 @@ export default function Home() {
     }
   }
 
-  // 充值 (模拟)
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
@@ -154,13 +143,40 @@ export default function Home() {
                   <div>欢迎使用，请直接提问</div>
                 </div>
              )}
+             
              {messages.map((m, i) => (
                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                 <div className={`rounded-2xl px-5 py-3 max-w-[85%] text-sm ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>
-                   <ReactMarkdown>{m.content}</ReactMarkdown>
+                 <div 
+                   className={`
+                     rounded-2xl px-5 py-3 max-w-[85%] shadow-sm
+                     
+                     // 1️⃣ 基础排版 (Typography)
+                     prose prose-sm sm:prose-base max-w-none break-words leading-relaxed
+                     
+                     // 2️⃣ 细节美化
+                     prose-p:my-2 prose-p:leading-7 
+                     prose-headings:font-bold prose-headings:my-3 prose-headings:text-gray-900
+                     prose-li:my-1
+                     prose-strong:font-bold
+                     prose-table:border prose-table:shadow-sm prose-table:rounded-lg
+                     prose-th:bg-gray-50 prose-th:p-3 prose-th:text-gray-700
+                     prose-td:p-3 prose-td:border-t
+
+                     // 3️⃣ 颜色逻辑 (用户蓝底白字，AI白底黑字)
+                     ${m.role === 'user' 
+                       ? 'bg-blue-600 text-white prose-invert prose-strong:text-white' // 用户
+                       : 'bg-white border border-gray-100 text-gray-800 prose-strong:text-blue-600' // AI
+                     }
+                   `}
+                 >
+                   {/* ✅ 移除了这里的 className，彻底解决报错 */}
+                   <ReactMarkdown>
+                     {m.content}
+                   </ReactMarkdown>
                  </div>
                </div>
              ))}
+
              {isLoading && <div className="text-sm text-gray-400 ml-2 animate-pulse">正在思考...</div>}
              <div ref={messagesEndRef} />
           </div>
