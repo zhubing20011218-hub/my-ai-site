@@ -157,12 +157,10 @@ export default function Home() {
     }
   }
 
-  // 📂 核心逻辑优化：智能处理多图上传
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    // 如果选的是非图片文件，保持单文件逻辑
     const firstFile = files[0]
     if (!firstFile.type.startsWith('image/')) {
        const reader = new FileReader()
@@ -174,17 +172,14 @@ export default function Home() {
        return
     }
 
-    // 📸 图片处理：计算剩余名额
     const remainingSlots = 9 - selectedImages.length
     if (remainingSlots <= 0) {
         alert("图片已达上限（9张），无法继续添加！")
         return
     }
 
-    // 转为数组，方便操作
     let filesToProcess = Array.from(files)
     
-    // 如果用户一次选太多，自动截断并提示，而不是报错
     if (filesToProcess.length > remainingSlots) {
        alert(`您选择了 ${filesToProcess.length} 张图片，但剩余名额只有 ${remainingSlots} 个。已自动为您选取前 ${remainingSlots} 张。`)
        filesToProcess = filesToProcess.slice(0, remainingSlots)
@@ -193,10 +188,8 @@ export default function Home() {
     const newImages: string[] = []
     const oversizedFiles: string[] = []
 
-    // 并发读取
     await Promise.all(filesToProcess.map(file => {
       return new Promise<void>((resolve) => {
-        // 检查大小 5MB
         if (file.size > 5 * 1024 * 1024) { 
            oversizedFiles.push(file.name)
            resolve()
@@ -211,18 +204,15 @@ export default function Home() {
       })
     }))
 
-    // 提示被跳过的大文件
     if (oversizedFiles.length > 0) {
         alert(`以下图片因超过 5MB 而未上传：\n${oversizedFiles.join('\n')}`)
     }
 
-    // 更新状态
     if (newImages.length > 0) {
         setSelectedImages(prev => [...prev, ...newImages])
-        setSelectedFile(null) // 互斥
+        setSelectedFile(null) 
     }
     
-    // 重置，允许重复选择
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
@@ -406,11 +396,18 @@ export default function Home() {
                    <div className="flex flex-col gap-2 max-w-[85%]">
                      <div className={`rounded-2xl px-5 py-3 shadow-sm overflow-hidden ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-100 text-gray-800'}`}>
                        
+                       {/* 📸 优化后的图片渲染：单图不撑满，多图九宫格 */}
                        {images.length > 0 && (
-                         <div className={`mb-3 grid gap-2 ${images.length > 1 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
+                         <div className={`mb-3 ${images.length === 1 ? '' : 'grid gap-2 grid-cols-2 sm:grid-cols-3'}`}>
                            {images.map((img, idx) => (
-                             <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-white/20 relative group">
-                               <img src={img} alt={`img-${idx}`} className="w-full h-full object-cover" />
+                             <div key={idx} className={`rounded-lg overflow-hidden border border-white/20 relative group ${
+                               images.length === 1 ? 'max-w-[280px]' : 'aspect-square'
+                             }`}>
+                               <img 
+                                 src={img} 
+                                 alt={`img-${idx}`} 
+                                 className="w-full h-full object-cover" 
+                               />
                              </div>
                            ))}
                          </div>
