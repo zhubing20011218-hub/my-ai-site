@@ -18,10 +18,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Image as ImageIcon, Plus } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Plus } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// ✨ 组件1：复制按钮
 function CopyButton({ content }: { content: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const handleCopy = async () => {
@@ -41,7 +40,6 @@ function CopyButton({ content }: { content: string }) {
   )
 }
 
-// 🧠 组件2：终端式思维链
 function Thinking({ plan }: { plan: string[] }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [logs, setLogs] = useState<string[]>([]) 
@@ -125,7 +123,6 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   
-  // 📸 核心修改：改为字符串数组，支持多张图
   const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<{name: string, content: string} | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -160,40 +157,48 @@ export default function Home() {
     }
   }
 
-  // 📂 核心逻辑：支持多文件选择与追加
+  // 📂 核心逻辑优化：智能处理多图上传
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
-    // 如果选的是文本文件，依旧保持单文件逻辑（因为多代码合并比较乱）
+    // 如果选的是非图片文件，保持单文件逻辑
     const firstFile = files[0]
     if (!firstFile.type.startsWith('image/')) {
        const reader = new FileReader()
        reader.onloadend = () => {
          setSelectedFile({ name: firstFile.name, content: reader.result as string })
-         setSelectedImages([]) // 互斥
+         setSelectedImages([]) 
        }
        reader.readAsText(firstFile)
        return
     }
 
-    // 📸 图片处理：支持多选追加
-    const newImages: string[] = []
+    // 📸 图片处理：计算剩余名额
     const remainingSlots = 9 - selectedImages.length
-
-    // 限制一次不能选太多
-    if (files.length > remainingSlots) {
-       alert(`最多只能再上传 ${remainingSlots} 张图片哦（总上限 9 张）`)
-       // 虽然超了，但能传几张是几张，还是直接截断？这里选择只取前 N 张
+    if (remainingSlots <= 0) {
+        alert("图片已达上限（9张），无法继续添加！")
+        return
     }
 
-    const filesToProcess = Array.from(files).slice(0, remainingSlots)
+    // 转为数组，方便操作
+    let filesToProcess = Array.from(files)
+    
+    // 如果用户一次选太多，自动截断并提示，而不是报错
+    if (filesToProcess.length > remainingSlots) {
+       alert(`您选择了 ${filesToProcess.length} 张图片，但剩余名额只有 ${remainingSlots} 个。已自动为您选取前 ${remainingSlots} 张。`)
+       filesToProcess = filesToProcess.slice(0, remainingSlots)
+    }
 
-    // 使用 Promise.all 并发读取所有图片
+    const newImages: string[] = []
+    const oversizedFiles: string[] = []
+
+    // 并发读取
     await Promise.all(filesToProcess.map(file => {
       return new Promise<void>((resolve) => {
+        // 检查大小 5MB
         if (file.size > 5 * 1024 * 1024) { 
-           console.warn("跳过一张过大的图片")
+           oversizedFiles.push(file.name)
            resolve()
            return
         }
@@ -206,14 +211,21 @@ export default function Home() {
       })
     }))
 
-    setSelectedImages(prev => [...prev, ...newImages])
-    setSelectedFile(null) // 互斥
+    // 提示被跳过的大文件
+    if (oversizedFiles.length > 0) {
+        alert(`以下图片因超过 5MB 而未上传：\n${oversizedFiles.join('\n')}`)
+    }
+
+    // 更新状态
+    if (newImages.length > 0) {
+        setSelectedImages(prev => [...prev, ...newImages])
+        setSelectedFile(null) // 互斥
+    }
     
-    // 重置 input，允许重复选择同一张图
+    // 重置，允许重复选择
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  // 删除单张预览图
   const removeImage = (index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index))
   }
@@ -227,17 +239,13 @@ export default function Home() {
     let apiContent: any = contentToSend
     let uiContent: any = contentToSend
 
-    // 场景 1: 有多张图片
     if (selectedImages.length > 0) {
       uiContent = { type: 'images_mixed', text: contentToSend, images: selectedImages }
-      
-      // 构造 Gemini 多模态 Payload
       apiContent = [
         { type: 'text', text: contentToSend || "请分析这些图片" },
         ...selectedImages.map(img => ({ type: 'image', image: img }))
       ]
     }
-    // 场景 2: 有代码/文档
     else if (selectedFile) {
       const promptWithFile = `${contentToSend}\n\n--- 附件文件: ${selectedFile.name} ---\n${selectedFile.content}\n--- 文件结束 ---`
       uiContent = { type: 'file_mixed', text: contentToSend, fileName: selectedFile.name }
@@ -247,7 +255,6 @@ export default function Home() {
     const userMsg = { role: 'user', content: uiContent }
     setMessages(prev => [...prev, userMsg])
     
-    // 清空状态
     setInput("") 
     setSelectedImages([])
     setSelectedFile(null)
@@ -259,7 +266,6 @@ export default function Home() {
     abortControllerRef.current = controller
 
     try {
-      // 快脑
       const planText = typeof apiContent === 'string' ? apiContent : (contentToSend || "分析多图")
       fetch('/api/plan', {
         method: 'POST',
@@ -268,7 +274,6 @@ export default function Home() {
         if (text && text.includes('|')) setThinkingSteps(text.split('|'))
       }).catch(() => {}) 
 
-      // 慢脑
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -374,7 +379,7 @@ export default function Home() {
              
              {messages.map((m, i) => {
                let content = ""
-               let images: string[] = [] // 存多张图
+               let images: string[] = [] 
                let fileName = null
                
                if (typeof m.content === 'string') {
@@ -401,7 +406,6 @@ export default function Home() {
                    <div className="flex flex-col gap-2 max-w-[85%]">
                      <div className={`rounded-2xl px-5 py-3 shadow-sm overflow-hidden ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-100 text-gray-800'}`}>
                        
-                       {/* 📸 渲染多张图片 (九宫格布局) */}
                        {images.length > 0 && (
                          <div className={`mb-3 grid gap-2 ${images.length > 1 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
                            {images.map((img, idx) => (
@@ -412,7 +416,6 @@ export default function Home() {
                          </div>
                        )}
 
-                       {/* 📄 渲染文件 */}
                        {fileName && (
                          <div className="mb-3 p-3 bg-black/10 rounded-lg flex items-center gap-3 border border-white/10">
                            <div className="p-2 bg-white rounded-lg">
@@ -469,7 +472,6 @@ export default function Home() {
           </div>
 
           <div className="p-4 bg-white border-t space-y-3">
-             {/* 📸 图片九宫格预览区 */}
              {selectedImages.length > 0 && (
                <div className="flex flex-wrap gap-2">
                  {selectedImages.map((img, idx) => (
@@ -494,7 +496,6 @@ export default function Home() {
                </div>
              )}
              
-             {/* 📄 文件预览 */}
              {selectedFile && (
                <div className="relative inline-block animate-in slide-in-from-bottom-2 fade-in">
                  <div className="h-16 w-auto px-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg">
@@ -522,17 +523,15 @@ export default function Home() {
                </div>
             ) : (
               <form onSubmit={(e) => handleSend(e)} className="flex gap-2 items-center">
-                {/* 📂 支持多选 multiple */}
                 <input 
                   type="file" 
                   ref={fileInputRef}
-                  multiple // 👈 关键：允许选多张
+                  multiple 
                   accept="image/*,.txt,.md,.js,.py,.html,.css,.json,.csv"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
                 
-                {/* 📎 附件按钮 */}
                 <Button 
                   type="button" 
                   variant="ghost" 
