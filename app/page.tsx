@@ -18,134 +18,227 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Plus, Mail, Phone, Lock, LogOut } from "lucide-react"
+import { 
+  Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, 
+  Lightbulb, Paperclip, X, FileCode, FileText, Plus, Mail, Phone, Lock, LogOut, 
+  ShieldCheck, Eye, EyeOff, Database, AlertCircle 
+} from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 // ==========================================
-// 👇 1. 登录/注册组件 (AuthPage)
+// 🛠️ 工具函数：密码强度检测
+// ==========================================
+function getPasswordStrength(password: string) {
+  let score = 0
+  if (password.length > 6) score++
+  if (password.length > 10) score++
+  if (/[A-Z]/.test(password)) score++
+  if (/[0-9]/.test(password)) score++
+  if (/[^A-Za-z0-9]/.test(password)) score++
+  return score
+}
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  const score = getPasswordStrength(password)
+  const strength = ["危险", "太弱", "一般", "强", "非常安全"]
+  const colors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-blue-500", "bg-green-500"]
+  
+  if (!password) return null
+
+  return (
+    <div className="mt-2 space-y-1 animate-in slide-in-from-top-1">
+      <div className="flex gap-1 h-1.5">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div 
+            key={i} 
+            className={`flex-1 rounded-full transition-all duration-500 ${i < score ? colors[score-1] || colors[0] : 'bg-gray-200'}`} 
+          />
+        ))}
+      </div>
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>强度: <span className={`font-bold ${score < 3 ? 'text-red-500' : 'text-green-600'}`}>{strength[Math.min(score, 4)]}</span></span>
+        {score < 3 && <span className="text-orange-600 flex items-center gap-1"><AlertCircle size={10}/> 建议使用字母+数字+符号组合</span>}
+      </div>
+    </div>
+  )
+}
+
+// ==========================================
+// 👇 1. 登录/注册/管理 组件 (AuthPage)
 // ==========================================
 function AuthPage({ onLogin }: { onLogin: (userInfo: any) => void }) {
-  const [isRegister, setIsRegister] = useState(false) // 切换登录/注册
-  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email") // 切换邮箱/手机
+  const [isRegister, setIsRegister] = useState(false)
+  const [authMethod, setAuthMethod] = useState<"email" | "phone">("email")
   
   // 表单状态
   const [nickname, setNickname] = useState("")
-  const [account, setAccount] = useState("") // 邮箱或手机号
+  const [account, setAccount] = useState("")
   const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false) // 显隐密码
+  
+  // 🛡️ 验证码相关状态
+  const [verifyCode, setVerifyCode] = useState("")
+  const [isCodeSent, setIsCodeSent] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+  const [realCode, setRealCode] = useState("") // 存储系统生成的真验证码
 
-  // 模拟登录/注册逻辑
+  const [loading, setLoading] = useState(false)
+  
+  // 👨‍💻 管理员：查看用户列表
+  const [showAdmin, setShowAdmin] = useState(false)
+  const [allUsers, setAllUsers] = useState<any[]>([])
+
+  // 加载所有用户（模拟数据库）
+  useEffect(() => {
+    const db = localStorage.getItem("my_ai_users_db")
+    if (db) setAllUsers(JSON.parse(db))
+  }, [showAdmin]) // 每次打开管理员面板刷新一下
+
+  // 发送验证码逻辑
+  const handleSendCode = () => {
+    if (!account) { alert("请先输入账号"); return; }
+    
+    // 模拟发送
+    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    setRealCode(code)
+    setIsCodeSent(true)
+    setCountdown(60)
+    
+    // 模拟短信弹窗
+    alert(`【冰式AI安全中心】\n您的验证码是：${code}\n验证码 5 分钟内有效，请勿泄露给他人。`)
+
+    // 倒计时
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          setIsCodeSent(false)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!account || !password || (isRegister && !nickname)) {
-      alert("请填写完整信息")
-      return
-    }
+    
+    if (!account || !password) { alert("账号密码不能为空"); return; }
 
     setLoading(true)
     
-    // 模拟网络请求延迟
     setTimeout(() => {
       setLoading(false)
+
       if (isRegister) {
-        // 注册逻辑
+        // --- 注册流程 ---
+        if (!nickname) { alert("请输入昵称"); return; }
+        // 🔒 安全校验 1：验证码
+        if (verifyCode !== realCode) { alert("❌ 验证码错误！"); return; }
+        // 🔒 安全校验 2：密码强度
+        if (getPasswordStrength(password) < 2) { 
+           if (!confirm("⚠️ 您的密码过于简单，存在被盗风险。确定要继续使用吗？")) return;
+        }
+
+        // 读取现有数据库
+        const dbStr = localStorage.getItem("my_ai_users_db")
+        const db = dbStr ? JSON.parse(dbStr) : []
+        
+        // 检查是否重复
+        if (db.find((u: any) => u.account === account)) {
+           alert("该账号已被注册！请直接登录");
+           setIsRegister(false);
+           return;
+        }
+
         const newUser = {
           id: "u_" + Math.random().toString(36).substr(2, 9),
           nickname,
           account,
-          balance: 0.00 // 初始余额 0 美元
+          password, // 实际生产环境这里必须加密存储(Hash)，这里演示存明文
+          balance: 0.00,
+          regTime: new Date().toLocaleString()
         }
-        // 存入本地缓存模拟数据库
+        
+        // 存入数据库
+        db.push(newUser)
+        localStorage.setItem("my_ai_users_db", JSON.stringify(db))
+        
+        // 存入当前会话
         localStorage.setItem("my_ai_user", JSON.stringify(newUser))
-        alert("🎉 注册成功！已自动登录")
+        
+        alert("🎉 注册成功！")
         onLogin(newUser)
       } else {
-        // 登录逻辑
-        // 这里我们做一个简化的“后门”，只要输入了账号密码就放行，或者读取刚才注册的数据
-        const storedUserStr = localStorage.getItem("my_ai_user")
-        if (storedUserStr) {
-          const storedUser = JSON.parse(storedUserStr)
-          if (storedUser.account === account) {
-             // 账号匹配（实际项目要比对密码，这里演示流程）
-             alert(`欢迎回来，${storedUser.nickname}！`)
-             onLogin(storedUser)
-             return
-          }
+        // --- 登录流程 ---
+        const dbStr = localStorage.getItem("my_ai_users_db")
+        const db = dbStr ? JSON.parse(dbStr) : []
+        
+        const user = db.find((u: any) => u.account === account && u.password === password)
+        
+        if (user) {
+             alert(`欢迎回来，${user.nickname}！`)
+             localStorage.setItem("my_ai_user", JSON.stringify(user)) // 更新当前会话
+             onLogin(user)
+        } else {
+             alert("❌ 账号或密码错误（如果您是新用户，请点击顶部切换到注册）")
         }
-        // 如果没有存档，为了演示方便，也创建一个临时用户
-        const tempUser = {
-          id: "u_guest_" + Math.random().toString(36).substr(2, 6),
-          nickname: "User_" + account.slice(0, 4),
-          account,
-          balance: 0.00
-        }
-        localStorage.setItem("my_ai_user", JSON.stringify(tempUser))
-        onLogin(tempUser)
       }
-    }, 1500)
+    }, 1000)
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-      <div className="mb-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="text-6xl mb-4">🧊</div>
-        <h1 className="text-3xl font-bold text-gray-900">冰式 AI 站</h1>
-        <p className="text-gray-500 mt-2">基于 Gemini 3 Pro 的下一代智能助手</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      {/* 背景装饰 */}
+      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+         <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] bg-blue-200/20 rounded-full blur-3xl"></div>
+         <div className="absolute top-[40%] -right-[10%] w-[40%] h-[40%] bg-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
-      <Card className="w-full max-w-md p-8 shadow-xl bg-white border-blue-50 animate-in zoom-in duration-500">
-        {/* 顶部切换：登录 vs 注册 */}
+      <div className="mb-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-700 z-10">
+        <div className="text-6xl mb-4 drop-shadow-sm">🧊</div>
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">冰式 AI 站</h1>
+        <p className="text-gray-500 mt-2 text-sm">企业级安全架构 · 银行级数据防护</p>
+      </div>
+
+      <Card className="w-full max-w-md p-8 shadow-2xl bg-white/80 backdrop-blur-xl border border-white/50 animate-in zoom-in duration-500 z-10">
+        {/* 切换栏 */}
         <div className="flex w-full mb-6 bg-gray-100 p-1 rounded-lg">
-          <button 
-            onClick={() => setIsRegister(false)}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isRegister ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            登录账户
-          </button>
-          <button 
-            onClick={() => setIsRegister(true)}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isRegister ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            注册新用户
-          </button>
+          <button onClick={() => setIsRegister(false)} className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isRegister ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>登录账户</button>
+          <button onClick={() => setIsRegister(true)} className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isRegister ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>注册新用户</button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           
-          {/* 注册模式下的：昵称输入 */}
+          {/* 昵称 */}
           {isRegister && (
             <div className="space-y-1 animate-in slide-in-from-top-2">
-              <label className="text-sm font-medium text-gray-700">用户昵称</label>
+              <label className="text-xs font-medium text-gray-700 ml-1">用户昵称</label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                <Input 
-                  placeholder="怎么称呼您？" 
-                  className="pl-9" 
-                  value={nickname}
-                  onChange={e => setNickname(e.target.value)}
-                />
+                <Input placeholder="怎么称呼您？" className="pl-9 bg-gray-50/50" value={nickname} onChange={e => setNickname(e.target.value)} />
               </div>
             </div>
           )}
 
-          {/* 注册模式下的：注册方式切换 (邮箱/手机) */}
+          {/* 注册方式 */}
           {isRegister && (
-             <div className="flex gap-4 text-sm mb-1">
-               <label className="flex items-center gap-1 cursor-pointer">
-                 <input type="radio" name="method" checked={authMethod === 'email'} onChange={() => setAuthMethod('email')} />
+             <div className="flex gap-4 text-xs mb-1 px-1">
+               <label className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors">
+                 <input type="radio" name="method" checked={authMethod === 'email'} onChange={() => setAuthMethod('email')} className="accent-blue-600"/>
                  <span>邮箱注册</span>
                </label>
-               <label className="flex items-center gap-1 cursor-pointer">
-                 <input type="radio" name="method" checked={authMethod === 'phone'} onChange={() => setAuthMethod('phone')} />
+               <label className="flex items-center gap-1 cursor-pointer hover:text-blue-600 transition-colors">
+                 <input type="radio" name="method" checked={authMethod === 'phone'} onChange={() => setAuthMethod('phone')} className="accent-blue-600"/>
                  <span>手机号注册</span>
                </label>
              </div>
           )}
 
-          {/* 账号输入框 (根据模式变化图标和提示) */}
+          {/* 账号 */}
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">
-              {isRegister ? (authMethod === 'email' ? '电子邮箱' : '手机号码') : '账号 (邮箱/手机)'}
+            <label className="text-xs font-medium text-gray-700 ml-1">
+              {isRegister ? (authMethod === 'email' ? '电子邮箱' : '手机号码') : '账号'}
             </label>
             <div className="relative">
               {authMethod === 'email' || !isRegister ? (
@@ -154,42 +247,125 @@ function AuthPage({ onLogin }: { onLogin: (userInfo: any) => void }) {
                 <Phone className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               )}
               <Input 
-                placeholder={isRegister ? (authMethod === 'email' ? 'name@example.com' : '13800000000') : '请输入您的账号'}
-                className="pl-9" 
+                placeholder={isRegister ? (authMethod === 'email' ? '例如: user@example.com' : '例如: 13800138000') : '请输入账号'}
+                className="pl-9 bg-gray-50/50" 
                 value={account}
                 onChange={e => setAccount(e.target.value)}
               />
             </div>
           </div>
 
-          {/* 密码输入框 */}
+          {/* 🛡️ 验证码 (仅注册时显示) */}
+          {isRegister && (
+            <div className="space-y-1 animate-in slide-in-from-top-2">
+              <label className="text-xs font-medium text-gray-700 ml-1">安全验证</label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                   <ShieldCheck className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+                   <Input 
+                     placeholder="6位数字验证码" 
+                     className="pl-9 bg-gray-50/50"
+                     value={verifyCode}
+                     onChange={e => setVerifyCode(e.target.value)}
+                     maxLength={6}
+                   />
+                </div>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleSendCode}
+                  disabled={isCodeSent}
+                  className="min-w-[100px] text-xs"
+                >
+                  {isCodeSent ? `${countdown}s 后重发` : "获取验证码"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* 密码 (带显隐切换) */}
           <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">密码</label>
+            <label className="text-xs font-medium text-gray-700 ml-1">密码</label>
             <div className="relative">
               <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
               <Input 
-                type="password" 
-                placeholder="••••••••" 
-                className="pl-9" 
+                type={showPassword ? "text" : "password"}
+                placeholder="设置登录密码" 
+                className="pl-9 pr-9 bg-gray-50/50" 
                 value={password}
                 onChange={e => setPassword(e.target.value)}
               />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
+              </button>
             </div>
+            {/* 🔒 密码强度条 */}
+            {isRegister && <PasswordStrengthMeter password={password} />}
           </div>
 
-          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 mt-6" disabled={loading}>
-            {loading ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> 处理中...</>
-            ) : (
-              isRegister ? "立即注册" : "登录"
-            )}
+          <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 mt-6 h-10 shadow-lg shadow-blue-200" disabled={loading}>
+            {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> 安全校验中...</> : (isRegister ? "立即注册" : "安全登录")}
           </Button>
 
         </form>
 
-        <div className="mt-6 text-center text-xs text-gray-400">
-          登录即代表您同意《用户协议》与《隐私政策》<br/>
-          (本演示模式下数据仅存储在本地浏览器)
+        {/* 底部协议与管理入口 */}
+        <div className="mt-8 pt-4 border-t border-gray-100 flex flex-col items-center gap-3">
+          <div className="text-center text-[10px] text-gray-400 leading-tight">
+            点击登录即代表您已阅读并同意<br/>
+            <a href="#" className="text-blue-500 hover:underline">《用户服务协议》</a> 与 <a href="#" className="text-blue-500 hover:underline">《隐私保护政策》</a>
+          </div>
+          
+          {/* 🔑 管理员入口按钮 */}
+          <Dialog open={showAdmin} onOpenChange={setShowAdmin}>
+            <DialogTrigger asChild>
+              <button className="flex items-center gap-1 text-[10px] text-gray-300 hover:text-gray-500 transition-colors mt-2">
+                <Database size={10} /> 管理员后台数据
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>👥 已注册用户列表 (Admin View)</DialogTitle>
+              </DialogHeader>
+              <div className="border rounded-lg overflow-hidden mt-4">
+                <div className="max-h-[300px] overflow-y-auto">
+                   <table className="w-full text-sm text-left">
+                     <thead className="bg-gray-50 text-gray-600 font-medium border-b sticky top-0">
+                       <tr>
+                         <th className="p-3">UID</th>
+                         <th className="p-3">昵称</th>
+                         <th className="p-3">账号</th>
+                         <th className="p-3">密码(明文)</th>
+                         <th className="p-3">余额</th>
+                         <th className="p-3">注册时间</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y">
+                       {allUsers.length === 0 ? (
+                         <tr><td colSpan={6} className="p-8 text-center text-gray-400">暂无数据</td></tr>
+                       ) : (
+                         allUsers.map((u, i) => (
+                           <tr key={i} className="hover:bg-gray-50">
+                             <td className="p-3 font-mono text-xs text-gray-500">{u.id}</td>
+                             <td className="p-3 font-medium">{u.nickname}</td>
+                             <td className="p-3 text-gray-600">{u.account}</td>
+                             <td className="p-3 text-red-400 font-mono text-xs">{u.password}</td>
+                             <td className="p-3 text-green-600">${u.balance}</td>
+                             <td className="p-3 text-xs text-gray-400">{u.regTime}</td>
+                           </tr>
+                         ))
+                       )}
+                     </tbody>
+                   </table>
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">* 注：实际生产环境中，密码必须加密存储，此处仅为演示方便。</p>
+            </DialogContent>
+          </Dialog>
         </div>
       </Card>
     </div>
@@ -197,10 +373,9 @@ function AuthPage({ onLogin }: { onLogin: (userInfo: any) => void }) {
 }
 
 // ==========================================
-// 👇 2. 主聊天程序 (Home)
+// 👇 2. 主聊天程序 (Home) - 保持不变
 // ==========================================
 
-// ... (复制按钮等小组件保持不变) ...
 function CopyButton({ content }: { content: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const handleCopy = async () => {
@@ -269,10 +444,8 @@ function Thinking({ plan }: { plan: string[] }) {
 }
 
 export default function Home() {
-  // 🔐 状态1：当前登录的用户 (null 表示未登录)
   const [user, setUser] = useState<any>(null)
   
-  // 检查本地是否有缓存的登录信息
   useEffect(() => {
     const stored = localStorage.getItem("my_ai_user")
     if (stored) {
@@ -280,15 +453,11 @@ export default function Home() {
     }
   }, [])
 
-  // 退出登录
   const handleLogout = () => {
     localStorage.removeItem("my_ai_user")
     setUser(null)
   }
 
-  // ----------------------------------------------------
-  // 以下是原来的聊天逻辑 (只有 user 存在时才渲染)
-  // ----------------------------------------------------
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -340,14 +509,12 @@ export default function Home() {
     } catch (error: any) { if (error.name !== 'AbortError') alert(error.message); } finally { setIsLoading(false); abortControllerRef.current = null; }
   }
 
-  // 充值 (模拟) - 后续会改成 USD 逻辑
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
     if (rechargeCode.toUpperCase() === "BOSS-9999") { alert("✅ 充值成功！"); setIsDialogOpen(false); } else { alert("❌ 无效卡密"); }
   }
 
-  // 🔥 核心渲染逻辑：如果没有 user，显示登录页；否则显示聊天页
   if (!user) {
     return <AuthPage onLogin={(u) => setUser(u)} />
   }
@@ -359,15 +526,12 @@ export default function Home() {
           <div className="font-bold text-xl flex items-center gap-2">🧊 冰式AI站</div>
           
           <div className="flex items-center gap-3">
-             {/* 👤 用户信息展示 */}
              <div className="flex items-center gap-2 mr-2 bg-gray-100 px-3 py-1.5 rounded-full text-sm">
                 <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">
                   {user.nickname ? user.nickname[0].toUpperCase() : "U"}
                 </div>
                 <span className="text-gray-700 font-medium">{user.nickname}</span>
              </div>
-
-             {/* 💰 余额展示 */}
              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="text-orange-600 border-orange-200">
@@ -380,8 +544,6 @@ export default function Home() {
                 <Button onClick={handleRecharge} className="w-full bg-orange-500 mt-4">立即核销</Button>
               </DialogContent>
             </Dialog>
-
-            {/* 🚪 退出按钮 */}
             <Button variant="ghost" size="icon" onClick={handleLogout} title="退出登录">
                <LogOut size={18} className="text-gray-500"/>
             </Button>
@@ -389,7 +551,6 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* 以下是聊天界面，基本保持不变 */}
       <div className="flex-1 flex items-center justify-center p-4">
         <Card className="w-full max-w-3xl p-0 shadow-xl h-[700px] flex flex-col bg-white">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
