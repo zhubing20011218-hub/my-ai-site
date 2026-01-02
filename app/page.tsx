@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Image as ImageIcon } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Image as ImageIcon, Plus } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 // ✨ 组件1：复制按钮
@@ -125,8 +125,8 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   
-  // 📁 附件状态管理
-  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  // 📸 核心修改：改为字符串数组，支持多张图
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
   const [selectedFile, setSelectedFile] = useState<{name: string, content: string} | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -139,7 +139,7 @@ export default function Home() {
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isLoading, thinkingSteps, selectedImage, selectedFile])
+  }, [messages, isLoading, thinkingSteps, selectedImages, selectedFile])
 
   useEffect(() => {
     if (!localStorage.getItem("my_ai_user_id")) {
@@ -155,84 +155,102 @@ export default function Home() {
     setIsLoading(false)
     const lastUserMsg = messages.filter(m => m.role === 'user').pop()
     if (lastUserMsg) {
-       // 如果上一条消息是混合内容，只恢复文本部分到输入框
        const text = typeof lastUserMsg.content === 'string' ? lastUserMsg.content : lastUserMsg.content.text
        setInput(text)
     }
   }
 
-  // 📂 核心逻辑：处理文件上传
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  // 📂 核心逻辑：支持多文件选择与追加
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
 
-    // 限制大小 (5MB)
-    if (file.size > 5 * 1024 * 1024) { 
-      alert("文件太大啦，请上传 5MB 以内的文件")
-      return
+    // 如果选的是文本文件，依旧保持单文件逻辑（因为多代码合并比较乱）
+    const firstFile = files[0]
+    if (!firstFile.type.startsWith('image/')) {
+       const reader = new FileReader()
+       reader.onloadend = () => {
+         setSelectedFile({ name: firstFile.name, content: reader.result as string })
+         setSelectedImages([]) // 互斥
+       }
+       reader.readAsText(firstFile)
+       return
     }
 
-    // A. 如果是图片 -> 转 Base64
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setSelectedImage(reader.result as string)
-        setSelectedFile(null) // 互斥，清空文件
-      }
-      reader.readAsDataURL(file)
-    } 
-    // B. 如果是文本/代码 -> 读取内容
-    else {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setSelectedFile({
-          name: file.name,
-          content: reader.result as string
-        })
-        setSelectedImage(null) // 互斥，清空图片
-      }
-      reader.readAsText(file) // 关键：作为文本读取
+    // 📸 图片处理：支持多选追加
+    const newImages: string[] = []
+    const remainingSlots = 9 - selectedImages.length
+
+    // 限制一次不能选太多
+    if (files.length > remainingSlots) {
+       alert(`最多只能再上传 ${remainingSlots} 张图片哦（总上限 9 张）`)
+       // 虽然超了，但能传几张是几张，还是直接截断？这里选择只取前 N 张
     }
+
+    const filesToProcess = Array.from(files).slice(0, remainingSlots)
+
+    // 使用 Promise.all 并发读取所有图片
+    await Promise.all(filesToProcess.map(file => {
+      return new Promise<void>((resolve) => {
+        if (file.size > 5 * 1024 * 1024) { 
+           console.warn("跳过一张过大的图片")
+           resolve()
+           return
+        }
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          newImages.push(reader.result as string)
+          resolve()
+        }
+        reader.readAsDataURL(file)
+      })
+    }))
+
+    setSelectedImages(prev => [...prev, ...newImages])
+    setSelectedFile(null) // 互斥
+    
+    // 重置 input，允许重复选择同一张图
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  // 删除单张预览图
+  const removeImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault()
     
     const contentToSend = textOverride || input
-    // 如果没有输入文本，也没有附件，就不发送
-    if ((!contentToSend.trim() && !selectedImage && !selectedFile) || isLoading) return
+    if ((!contentToSend.trim() && selectedImages.length === 0 && !selectedFile) || isLoading) return
 
-    // 构建发给后端的 API 消息体
     let apiContent: any = contentToSend
-    
-    // 构建显示在前端 UI 的消息体
     let uiContent: any = contentToSend
 
-    // 场景 1: 有图片
-    if (selectedImage) {
-      uiContent = { type: 'image_mixed', text: contentToSend, image: selectedImage }
+    // 场景 1: 有多张图片
+    if (selectedImages.length > 0) {
+      uiContent = { type: 'images_mixed', text: contentToSend, images: selectedImages }
+      
+      // 构造 Gemini 多模态 Payload
       apiContent = [
-        { type: 'text', text: contentToSend || "请分析这张图片" },
-        { type: 'image', image: selectedImage }
+        { type: 'text', text: contentToSend || "请分析这些图片" },
+        ...selectedImages.map(img => ({ type: 'image', image: img }))
       ]
     }
     // 场景 2: 有代码/文档
     else if (selectedFile) {
-      // 策略：把文件内容“拼”在用户问题的后面，假装是用户粘贴进去的
       const promptWithFile = `${contentToSend}\n\n--- 附件文件: ${selectedFile.name} ---\n${selectedFile.content}\n--- 文件结束 ---`
-      
       uiContent = { type: 'file_mixed', text: contentToSend, fileName: selectedFile.name }
-      apiContent = promptWithFile // 直接发拼接好的长文本
+      apiContent = promptWithFile 
     }
 
     const userMsg = { role: 'user', content: uiContent }
     setMessages(prev => [...prev, userMsg])
     
-    // 清空输入区
+    // 清空状态
     setInput("") 
-    setSelectedImage(null)
+    setSelectedImages([])
     setSelectedFile(null)
-    if(fileInputRef.current) fileInputRef.current.value = ""
 
     setIsLoading(true)
     setThinkingSteps(defaultSteps) 
@@ -241,26 +259,21 @@ export default function Home() {
     abortControllerRef.current = controller
 
     try {
-      // 快脑 (只发文本摘要去分析意图)
-      const planText = typeof apiContent === 'string' ? apiContent : (contentToSend || "分析附件")
-      
+      // 快脑
+      const planText = typeof apiContent === 'string' ? apiContent : (contentToSend || "分析多图")
       fetch('/api/plan', {
         method: 'POST',
-        body: JSON.stringify({ message: planText.substring(0, 500) }) // 截取一下防止太长
-      })
-      .then(res => res.text())
-      .then(text => {
+        body: JSON.stringify({ message: planText.substring(0, 500) }) 
+      }).then(res => res.text()).then(text => {
         if (text && text.includes('|')) setThinkingSteps(text.split('|'))
-      })
-      .catch(() => {}) 
+      }).catch(() => {}) 
 
-      // 慢脑 (发送完整内容)
+      // 慢脑
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: messages.map(m => {
-             // 历史消息如果是对象，需要还原成文本给 API (简化处理)
              if (typeof m.content !== 'string') return { role: m.role, content: m.content.text || "[附件]" }
              return { role: m.role, content: m.content }
           }).concat({ role: 'user', content: apiContent }), 
@@ -360,22 +373,20 @@ export default function Home() {
              )}
              
              {messages.map((m, i) => {
-               // 处理渲染：支持 纯文本 / 图片混合 / 文件混合
                let content = ""
-               let imageSrc = null
+               let images: string[] = [] // 存多张图
                let fileName = null
                
                if (typeof m.content === 'string') {
                  content = m.content
-               } else if (m.content.type === 'image_mixed') {
+               } else if (m.content.type === 'images_mixed') {
                  content = m.content.text
-                 imageSrc = m.content.image
+                 images = m.content.images || []
                } else if (m.content.type === 'file_mixed') {
                  content = m.content.text
                  fileName = m.content.fileName
                }
 
-               // 切割“猜你想问”
                const [mainText, relatedStr] = content.split('___RELATED___')
                const suggestions = relatedStr ? relatedStr.split('|').filter((s: string) => s.trim()) : []
 
@@ -390,14 +401,18 @@ export default function Home() {
                    <div className="flex flex-col gap-2 max-w-[85%]">
                      <div className={`rounded-2xl px-5 py-3 shadow-sm overflow-hidden ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-100 text-gray-800'}`}>
                        
-                       {/* 📸 渲染图片附件 */}
-                       {imageSrc && (
-                         <div className="mb-3 rounded-lg overflow-hidden border border-white/20">
-                           <img src={imageSrc} alt="uploaded" className="max-w-full max-h-[300px] object-cover" />
+                       {/* 📸 渲染多张图片 (九宫格布局) */}
+                       {images.length > 0 && (
+                         <div className={`mb-3 grid gap-2 ${images.length > 1 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-1'}`}>
+                           {images.map((img, idx) => (
+                             <div key={idx} className="aspect-square rounded-lg overflow-hidden border border-white/20 relative group">
+                               <img src={img} alt={`img-${idx}`} className="w-full h-full object-cover" />
+                             </div>
+                           ))}
                          </div>
                        )}
 
-                       {/* 📄 渲染文件附件 */}
+                       {/* 📄 渲染文件 */}
                        {fileName && (
                          <div className="mb-3 p-3 bg-black/10 rounded-lg flex items-center gap-3 border border-white/10">
                            <div className="p-2 bg-white rounded-lg">
@@ -454,20 +469,40 @@ export default function Home() {
           </div>
 
           <div className="p-4 bg-white border-t space-y-3">
-             {/* 📸 附件预览区 (图片或文件) */}
-             {(selectedImage || selectedFile) && (
-               <div className="relative inline-block animate-in slide-in-from-bottom-2 fade-in">
-                 {selectedImage ? (
-                   <img src={selectedImage} alt="preview" className="h-16 w-16 object-cover rounded-lg border border-gray-200 shadow-sm" />
-                 ) : (
-                   <div className="h-16 w-auto px-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg">
-                     <FileText size={20} className="text-blue-500"/>
-                     <span className="text-sm text-gray-600 max-w-[150px] truncate">{selectedFile?.name}</span>
+             {/* 📸 图片九宫格预览区 */}
+             {selectedImages.length > 0 && (
+               <div className="flex flex-wrap gap-2">
+                 {selectedImages.map((img, idx) => (
+                   <div key={idx} className="relative w-16 h-16 group animate-in zoom-in duration-300">
+                     <img src={img} alt="preview" className="w-full h-full object-cover rounded-lg border border-gray-200 shadow-sm" />
+                     <button 
+                       onClick={() => removeImage(idx)}
+                       className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow-sm z-10"
+                     >
+                       <X size={12} />
+                     </button>
                    </div>
+                 ))}
+                 {selectedImages.length < 9 && (
+                   <button 
+                     onClick={() => fileInputRef.current?.click()}
+                     className="w-16 h-16 border-2 border-dashed border-gray-200 rounded-lg flex items-center justify-center text-gray-400 hover:border-blue-400 hover:text-blue-400 transition-colors"
+                   >
+                     <Plus size={20} />
+                   </button>
                  )}
-                 
+               </div>
+             )}
+             
+             {/* 📄 文件预览 */}
+             {selectedFile && (
+               <div className="relative inline-block animate-in slide-in-from-bottom-2 fade-in">
+                 <div className="h-16 w-auto px-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg">
+                   <FileText size={20} className="text-blue-500"/>
+                   <span className="text-sm text-gray-600 max-w-[150px] truncate">{selectedFile.name}</span>
+                 </div>
                  <button 
-                   onClick={() => { setSelectedImage(null); setSelectedFile(null); }}
+                   onClick={() => setSelectedFile(null)}
                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow-sm z-10"
                  >
                    <X size={12} />
@@ -487,10 +522,11 @@ export default function Home() {
                </div>
             ) : (
               <form onSubmit={(e) => handleSend(e)} className="flex gap-2 items-center">
-                {/* 📂 隐藏的文件输入框: 接受图片、文本、代码 */}
+                {/* 📂 支持多选 multiple */}
                 <input 
                   type="file" 
                   ref={fileInputRef}
+                  multiple // 👈 关键：允许选多张
                   accept="image/*,.txt,.md,.js,.py,.html,.css,.json,.csv"
                   className="hidden"
                   onChange={handleFileSelect}
@@ -503,7 +539,7 @@ export default function Home() {
                   size="icon"
                   className="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
                   onClick={() => fileInputRef.current?.click()}
-                  title="上传图片或文件"
+                  title="上传图片(最多9张)或文件"
                 >
                   <Paperclip size={20} />
                 </Button>
