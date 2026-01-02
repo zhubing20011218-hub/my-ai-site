@@ -8,14 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
   Wallet, Copy, Check, Bot, User, Loader2, Terminal, Square, Send, 
-  Paperclip, X, FileCode, Lock, LogOut, Shield, History, Coins, AlertCircle, PartyPopper
+  Paperclip, X, FileCode, Lock, LogOut, Shield, History, Coins, AlertCircle, PartyPopper, Eye
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 // --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 复制组件 ---
+// --- 辅助组件 ---
 function CopyButton({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
   const handle = async () => { await navigator.clipboard.writeText(content); setCopied(true); setTimeout(()=>setCopied(false), 2000); };
@@ -51,7 +51,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       if (isReg) {
         if (verifyCode !== realCode) return alert("验证码错误");
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
-        if (db.find((u:any)=>u.account===account)) return alert("账号已存在");
+        if (db.find((u:any)=>u.account===account)) return alert("该账号已存在");
         const u = { id: "u_"+Math.random().toString(36).substr(2,6), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
         db.push(u); localStorage.setItem("my_ai_users_db", JSON.stringify(db));
         localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u);
@@ -69,19 +69,17 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
-      {/* 标注3：左冰块右Eureka */}
       <div className="flex items-center gap-3 mb-10">
         <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-3xl shadow-sm">🧊</div>
         <h1 className="text-4xl font-black tracking-tighter text-slate-900">Eureka</h1>
       </div>
-
       <Card className="w-full max-w-sm p-8 shadow-none border-none text-center">
         <form onSubmit={handleAuth} className="space-y-4 text-left">
           {isReg && <Input placeholder="您的昵称" className="bg-slate-50 border-none h-11" value={nickname} onChange={e=>setNickname(e.target.value)} />}
           <Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-11" value={account} onChange={e=>setAccount(e.target.value)} />
           {isReg && <div className="flex gap-2"><Input placeholder="验证码" className="bg-slate-50 border-none h-11" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 text-xs">{count>0?`${count}s`:"获取"}</Button></div>}
           <Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11" value={password} onChange={e=>setPassword(e.target.value)} />
-          <Button className="w-full bg-slate-900 h-11 mt-2 transition-all shadow-md active:scale-95" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"创建账户":"安全登录"}</Button>
+          <Button className="w-full bg-slate-900 h-11 mt-2 transition-all shadow-md active:scale-95 text-white" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"创建账户":"安全登录"}</Button>
         </form>
         <div className="mt-8 flex flex-col items-center gap-3">
           <div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse">
@@ -95,7 +93,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// --- 主程序 ---
+// ==========================================
+// 🚀 主程序
+// ==========================================
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -105,12 +105,13 @@ export default function Home() {
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [model, setModel] = useState("gemini");
   const [images, setImages] = useState<string[]>([]);
   const [file, setFile] = useState<{name:string, content:string} | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
 
   useEffect(() => {
     const u = localStorage.getItem("my_ai_user");
@@ -125,7 +126,6 @@ export default function Home() {
 
   const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
 
-  // 标注2：处理模型维护提示
   const handleModelChange = (value: string) => {
     if (value === "gemini") setModel(value);
     else alert("正在维护当中，可选择其他模型使用");
@@ -204,8 +204,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-white text-slate-900">
       
-      {/* 标注1：顶端居中文字 */}
-      <div className="w-full bg-slate-50 py-1.5 text-center border-b border-slate-100">
+      <div className="w-full bg-slate-50 py-2 text-center border-b border-slate-100">
         <p className="text-[11px] font-medium text-slate-500 tracking-tight">
           欢迎来到Eureka，有任何问题可以
           <a href="/kefu.jpg" target="_blank" className="text-blue-600 font-bold hover:underline mx-1">联系客服</a>
@@ -213,14 +212,12 @@ export default function Home() {
       </div>
 
       <nav className="h-14 flex items-center justify-between px-6 border-b border-slate-100 shrink-0">
-        {/* 标注4：Logo 文字一致性 */}
-        <div className="flex items-center gap-2 font-black text-xl tracking-tighter text-slate-900 select-none cursor-default">
+        <div className="flex items-center gap-2 font-black text-xl tracking-tighter text-slate-900">
           <div className="w-7 h-7 bg-slate-900 text-white rounded-lg flex items-center justify-center text-xs shadow-sm">🧊</div>
           <span>Eureka</span>
         </div>
 
         <div className="flex items-center gap-4">
-           {/* 标注2：新增模型并维护提示 */}
            <Select value={model} onValueChange={handleModelChange}>
               <SelectTrigger className="w-36 h-8 border-none bg-slate-50 text-[10px] font-bold shadow-none focus:ring-0">
                 <SelectValue />
@@ -241,7 +238,7 @@ export default function Home() {
                </button>
              </DialogTrigger>
              <DialogContent className="sm:max-w-md p-0 overflow-hidden border-none rounded-3xl shadow-2xl">
-               <div className="bg-white p-6 flex flex-col items-center border-b">
+               <div className="bg-white p-6 flex flex-col items-center border-b text-slate-900">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}>{user.nickname[0].toUpperCase()}</div>
                   <h2 className="text-xl font-black tracking-tight">Eureka ID: {user.nickname}</h2>
                   <p className="text-slate-400 text-[10px] mb-4 font-mono">{user.account}</p>
@@ -250,11 +247,11 @@ export default function Home() {
                <div className="p-6 bg-slate-50/50">
                   <div className="bg-white rounded-2xl p-5 border border-slate-100 mb-6 shadow-sm">
                      <div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额 (USD)</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div>
-                     <div className="text-4xl font-black font-mono tracking-tighter text-slate-900">${user.balance}</div>
+                     <div className="text-4xl font-black font-mono tracking-tighter">${user.balance}</div>
                   </div>
                   <div className="space-y-4">
-                     <div className="flex items-center gap-2 font-bold text-[10px] text-slate-500 uppercase tracking-widest"><History size={12}/> 最近活动记录</div>
-                     <div className="max-h-[120px] overflow-y-auto space-y-2 pr-1 scrollbar-hide text-[11px]">
+                     <div className="flex items-center gap-2 font-bold text-[10px] text-slate-500 uppercase tracking-widest"><History size={12}/> 最近财务记录</div>
+                     <div className="max-h-[120px] overflow-y-auto space-y-2 pr-1 scrollbar-hide text-[11px] text-slate-900">
                         {transactions.map(t=>(<div key={t.id} className="flex justify-between bg-white p-2.5 rounded-xl border border-slate-100 font-bold"><span>{t.description}</span><span className={t.type==='topup'?'text-green-600':'text-slate-500'}>${t.amount}</span></div>))}
                      </div>
                   </div>
@@ -265,18 +262,51 @@ export default function Home() {
       </nav>
 
       {user?.role === 'admin' && (
-        <div className="fixed left-6 bottom-20 w-64 bg-slate-950 text-white p-4 rounded-3xl border border-white/10 shadow-2xl z-50">
-           <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-2"><Shield size={12}/> ADMIN MONITOR</div>
-           <div className="max-h-48 overflow-y-auto space-y-2 pr-2 scrollbar-hide">
+        <div className="fixed right-6 bottom-32 w-80 bg-slate-950 text-white p-5 rounded-[32px] border border-white/10 shadow-2xl z-50">
+           <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3">
+             <Shield size={14} className="animate-pulse"/> Eureka ADMIN CENTER
+           </div>
+           <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
               {JSON.parse(localStorage.getItem("my_ai_users_db") || "[]").map((u:any)=>(
-                <div key={u.id} className="bg-white/5 p-2 rounded-xl border border-white/5 text-[10px]">
-                   <div className="font-bold text-blue-400 truncate">{u.nickname}</div>
-                   <div className="flex justify-between mt-1 text-green-400 font-mono"><span>${u.balance}</span></div>
+                <div key={u.id} className="bg-white/5 p-4 rounded-2xl border border-white/5 transition-all hover:bg-white/10">
+                   <div className="flex justify-between items-start mb-2">
+                      <div className="font-black text-blue-300 text-sm">{u.nickname}</div>
+                      <div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div>
+                   </div>
+                   <div className="text-[10px] text-white/40 space-y-1 mb-3">
+                      <div className="flex justify-between"><span>账号:</span><span className="text-white/60">{u.account}</span></div>
+                      <div className="flex justify-between border-t border-white/5 pt-1"><span>密码:</span><span className="text-white/80 font-mono">{u.password}</span></div>
+                   </div>
+                   <Button onClick={() => setSelectedAdminUser(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-600/30 text-[10px] font-black rounded-xl transition-all">使用详情</Button>
                 </div>
               ))}
            </div>
         </div>
       )}
+
+      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}>
+        <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl bg-white text-slate-900">
+           {selectedAdminUser && (
+             <div className="flex flex-col h-[600px]">
+                <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                   <div><h3 className="text-2xl font-black tracking-tight">{selectedAdminUser.nickname} 的使用详情</h3><p className="text-slate-400 text-xs font-mono">{selectedAdminUser.account}</p></div>
+                   <div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">实时余额</p><p className="text-3xl font-black text-green-600">${selectedAdminUser.balance}</p></div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-8 space-y-4">
+                   <div className="grid grid-cols-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-4 px-2"><span>操作记录</span><span className="text-center">时间</span><span className="text-center">扣费</span><span className="text-right">备注</span></div>
+                   {(JSON.parse(localStorage.getItem(`tx_${selectedAdminUser.id}`) || "[]")).map((tx:any) => (
+                      <div key={tx.id} className="grid grid-cols-4 items-center p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:border-blue-200 transition-all">
+                         <span className="text-xs font-bold text-slate-700">{tx.description}</span>
+                         <span className="text-[10px] text-center text-slate-400 font-mono">{tx.time}</span>
+                         <span className={`text-center font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span>
+                         <span className="text-right font-black text-slate-900 font-mono text-[9px]">ID:{tx.id.slice(-4)}</span>
+                      </div>
+                   ))}
+                </div>
+             </div>
+           )}
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-10 pb-32">
         <div className="max-w-3xl mx-auto space-y-10">
@@ -284,19 +314,13 @@ export default function Home() {
             <div className="flex flex-col items-center py-10 text-center animate-in fade-in zoom-in duration-700">
               <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-sm">🧊</div>
               <h2 className="text-3xl font-black tracking-tight text-slate-800 mb-10">有什么可以帮您的？</h2>
-              
-              {/* 标注5：指令词居中设计 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                  {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
-                   <button key={idx} onClick={() => handleSend(null, txt)} 
-                    className="flex items-center justify-center p-6 bg-white border border-slate-100 rounded-3xl hover:bg-slate-50 hover:border-slate-200 transition-all text-sm text-slate-600 font-bold shadow-sm h-24">
-                    {txt}
-                   </button>
+                   <button key={idx} onClick={() => handleSend(null, txt)} className="flex items-center justify-center p-6 bg-white border border-slate-100 rounded-3xl hover:bg-slate-50 hover:border-slate-200 transition-all text-sm text-slate-600 font-bold shadow-sm h-24 text-center leading-relaxed">{txt}</button>
                  ))}
               </div>
             </div>
           )}
-
           {messages.map((m, i) => (
             <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'} animate-in fade-in duration-300`}>
               {m.role!=='user' && <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center mt-1 shrink-0 border border-blue-100 text-blue-600 shadow-sm"><Bot size={16} /></div>}
@@ -308,9 +332,7 @@ export default function Home() {
                       {m.content.file && <div className="flex items-center gap-2 opacity-70 border p-1 rounded-lg bg-white/50"><FileCode size={12}/>{m.content.file}</div>}
                       <p className="leading-relaxed font-medium">{m.content.text}</p>
                     </div>
-                  ) : (
-                    <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800"><ReactMarkdown>{typeof m.content === 'string' ? m.content : m.content.text}</ReactMarkdown></div>
-                  )}
+                  ) : (<div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800"><ReactMarkdown>{typeof m.content === 'string' ? m.content : m.content.text}</ReactMarkdown></div>)}
                   {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50 flex justify-end"><CopyButton content={typeof m.content === 'string' ? m.content : m.content.text}/></div>}
                 </div>
               </div>
@@ -325,38 +347,23 @@ export default function Home() {
         <div className="max-w-3xl mx-auto">
           {(images.length > 0 || file) && (
             <div className="flex flex-wrap gap-2 mb-4 animate-in slide-in-from-bottom-2 bg-white/50 backdrop-blur p-2 rounded-2xl border border-slate-100 shadow-sm">
-              {images.map((img,idx)=>(
-                <div key={idx} className="relative w-12 h-12">
-                  <img src={img} className="w-full h-full object-cover rounded-xl border border-slate-200 shadow-sm"/>
-                  <button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm active:scale-90 transition-all"><X size={10}/></button>
-                </div>
-              ))}
-              {file && (
-                <div className="bg-white px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-2 border border-slate-200 font-bold shadow-sm">
-                  <span>📄 {file.name}</span>
-                  <button onClick={()=>setFile(null)} className="text-red-400 hover:text-red-500 transition-colors"><X size={12}/></button>
-                </div>
-              )}
+              {images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12"><img src={img} className="w-full h-full object-cover rounded-xl border border-slate-200 shadow-sm"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm active:scale-90 transition-all"><X size={10}/></button></div>))}
+              {file && (<div className="bg-white px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-2 border border-slate-200 font-bold shadow-sm"><span>📄 {file.name}</span><button onClick={()=>setFile(null)} className="text-red-400 hover:text-red-500 transition-colors"><X size={12}/></button></div>)}
             </div>
           )}
-          
           <div className="relative shadow-2xl rounded-[32px] overflow-hidden border border-slate-200 bg-white group focus-within:border-blue-200 transition-all">
             {isLoading ? (
-              <Button onClick={()=>abortRef.current?.abort()} className="w-full bg-slate-50 text-slate-500 h-14 rounded-none gap-2 font-black border-none hover:bg-slate-100 transition-colors">
-                <Square size={14} fill="currentColor"/> 停止生成
-              </Button>
+              <Button onClick={()=>abortRef.current?.abort()} className="w-full bg-slate-50 text-slate-500 h-14 rounded-none gap-2 font-black border-none hover:bg-slate-100 transition-colors"><Square size={14} fill="currentColor"/> 停止生成</Button>
             ) : (
               <form onSubmit={handleSend} className="flex items-center p-2 bg-white">
                 <input type="file" ref={fileInputRef} hidden multiple accept="image/*,.py,.js,.txt,.md" onChange={handleUpload} />
                 <Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-slate-50 hover:text-blue-600 transition-all"><Paperclip size={22}/></Button>
                 <Input value={input} onChange={e=>setInput(e.target.value)} className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium" placeholder="有问题尽管问我... " />
-                <Button type="submit" disabled={!input.trim() && images.length===0 && !file} className="bg-slate-900 hover:bg-blue-600 h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 text-white">
-                  <Send size={20} />
-                </Button>
+                <Button type="submit" disabled={!input.trim() && images.length===0 && !file} className="bg-slate-900 hover:bg-blue-600 h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 text-white border-none"><Send size={20} /></Button>
               </form>
             )}
           </div>
-          <p className="text-[9px] text-center text-slate-400 mt-4 font-black uppercase tracking-widest opacity-60">Eureka Site · Gemini 3 Pro Engine</p>
+          <p className="text-[9px] text-center text-slate-400 mt-4 font-black uppercase tracking-widest opacity-60">Eureka Site · Gemini Engine</p>
         </div>
       </div>
 
@@ -364,7 +371,7 @@ export default function Home() {
         <DialogContent className="sm:max-w-md p-0 overflow-hidden border-none rounded-3xl shadow-2xl">
           <div className="p-8 text-center bg-white text-slate-900">
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32}/></div>
-            <h3 className="text-2xl font-black tracking-tight mb-4 text-slate-900">充值 Eureka</h3>
+            <h3 className="text-2xl font-black tracking-tight mb-4">充值 Eureka</h3>
             <div className="flex bg-slate-100 p-1 rounded-2xl mb-8 text-[11px] font-black">
                <button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card'?'bg-white shadow text-slate-900':'text-slate-400'}`}>卡密核销</button>
                <button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online'?'bg-white shadow text-slate-900':'text-slate-400'}`}>在线支付</button>
@@ -375,7 +382,7 @@ export default function Home() {
                 <Button onClick={()=>{ 
                   const val = (document.getElementById('card-input') as HTMLInputElement).value; 
                   if(val.toUpperCase()==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("充值成功！账户增加 $10.00"); } else alert("卡密无效"); 
-                }} className="w-full bg-slate-900 h-12 rounded-2xl font-black text-white shadow-xl active:scale-95 transition-all">立即核销</Button>
+                }} className="w-full bg-slate-900 h-12 rounded-2xl font-black text-white shadow-xl active:scale-95 transition-all border-none">立即核销</Button>
               </div>
             ) : (
               <div className="p-6 bg-orange-50 rounded-3xl border border-orange-100 text-left">
