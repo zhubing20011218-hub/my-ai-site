@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
   Wallet, Copy, Check, Bot, User, Loader2, Terminal, Square, Send, 
-  Lightbulb, Paperclip, X, FileCode, Lock, LogOut, 
-  ShieldCheck, Shield, History, Coins, AlertCircle
+  Paperclip, X, FileCode, Lock, LogOut, Shield, History, Coins, AlertCircle
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -49,22 +48,22 @@ function Thinking({ plan }: { plan: string[] }) {
 }
 
 // ==========================================
-// 👤 极简认证页面
+// 👤 极简认证页面（修复拼写错误）
 // ==========================================
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
-  const [account, setAcc] = useState("");
-  const [password, setPwd] = useState("");
-  const [nickname, setNick] = useState("");
-  const [code, setCode] = useState("");
+  const [account, setAccount] = useState("");
+  const [password, setPassword] = useState(""); // ✅ 确保名字是 password
+  const [nickname, setNickname] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
   const [realCode, setRealCode] = useState("");
   const [count, setCount] = useState(0);
   const [load, setLoad] = useState(false);
 
   const sendCode = () => {
-    if(!account) return alert("请填账号");
+    if(!account) return alert("请先输入账号");
     const c = Math.floor(100000+Math.random()*900000).toString();
-    setRealCode(c); setCount(60); alert(`验证码: ${c}`);
+    setRealCode(c); setCount(60); alert(`【冰式AI】验证码: ${c}`);
     const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
   };
 
@@ -73,8 +72,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     setTimeout(() => {
       setLoad(false);
       if (isReg) {
-        if (code !== realCode) return alert("验证码错误");
+        if (verifyCode !== realCode) return alert("验证码错误");
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
+        if (db.find((u:any)=>u.account===account)) return alert("该账号已存在");
         const u = { id: "u_"+Math.random().toString(36).substr(2,6), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
         db.push(u); localStorage.setItem("my_ai_users_db", JSON.stringify(db));
         localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u);
@@ -95,9 +95,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       <Card className="w-full max-w-sm p-8 shadow-none border-none text-center">
         <div className="mb-10"><div className="text-6xl mb-4">🧊</div><h1 className="text-2xl font-bold tracking-tight text-slate-900">登录冰式 AI</h1></div>
         <form onSubmit={handleAuth} className="space-y-4 text-left">
-          {isReg && <Input placeholder="您的昵称" className="bg-slate-50 border-none h-11" value={nickname} onChange={e=>setNick(e.target.value)} />}
-          <Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-11" value={account} onChange={e=>setAcc(e.target.value)} />
-          {isReg && <div className="flex gap-2"><Input placeholder="验证码" className="bg-slate-50 border-none h-11" value={code} onChange={e=>setCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 text-xs">{count>0?`${count}s`:"获取"}</Button></div>}
+          {isReg && <Input placeholder="您的昵称" className="bg-slate-50 border-none h-11" value={nickname} onChange={e=>setNickname(e.target.value)} />}
+          <Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-11" value={account} onChange={e=>setAccount(e.target.value)} />
+          {isReg && <div className="flex gap-2"><Input placeholder="验证码" className="bg-slate-50 border-none h-11" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 text-xs">{count>0?`${count}s`:"获取"}</Button></div>}
           <Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11" value={password} onChange={e=>setPassword(e.target.value)} />
           <Button className="w-full bg-slate-900 h-11 mt-2 transition-all" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"创建账户":"安全登录"}</Button>
         </form>
@@ -234,7 +234,6 @@ export default function Home() {
                 <SelectTrigger className="w-32 h-8 border-none bg-slate-50 text-[10px] font-bold"><SelectValue /></SelectTrigger>
                 <SelectContent><SelectItem value="gemini">Gemini 3 Pro</SelectItem></SelectContent>
              </Select>
-             {/* 👤 个人账户移至最右侧 */}
              <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
                <DialogTrigger asChild>
                  <button className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}>
