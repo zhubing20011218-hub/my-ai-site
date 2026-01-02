@@ -6,12 +6,9 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-// 🛡️ 兼容处理：如果 Tabs 还没安装好，我们用普通 div 代替，防止崩溃
-import * as TabsPrimitive from "@radix-ui/react-tabs" 
-
 import { 
   Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, 
-  Lightbulb, Paperclip, X, FileCode, FileText, Plus, Mail, Phone, Lock, LogOut, 
+  Lightbulb, Paperclip, X, FileCode, FileText, Plus, Mail, Lock, LogOut, 
   ShieldCheck, Eye, EyeOff, Shield, Users, CreditCard, Calendar, History
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
@@ -20,7 +17,7 @@ import ReactMarkdown from 'react-markdown'
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
 // ==========================================
-// 🛠️ 辅助小组件 (密码强度/复制/思维链)
+// 🛠️ 辅助组件
 // ==========================================
 function PasswordStrengthMeter({ password }: { password: string }) {
   const getStrength = (p: string) => {
@@ -85,9 +82,9 @@ function Thinking({ plan }: { plan: string[] }) {
 // ==========================================
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
-  const [nickname, setNick] = useState("");
   const [account, setAcc] = useState("");
   const [password, setPwd] = useState("");
+  const [nickname, setNick] = useState("");
   const [code, setCode] = useState("");
   const [realCode, setRealCode] = useState("");
   const [count, setCount] = useState(0);
@@ -105,7 +102,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     setTimeout(() => {
       setLoad(false);
       if (isReg) {
-        if (code !== realCode) return alert("验证码错");
+        if (code !== realCode) return alert("验证码错误");
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
         if (db.find((u:any)=>u.account===account)) return alert("账号已存在");
         const u = { id: "u_"+Math.random().toString(36).substr(2,6), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
@@ -125,7 +122,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 shadow-2xl bg-white/90 backdrop-blur-md">
+      <Card className="w-full max-w-md p-8 shadow-2xl bg-white">
         <div className="text-center mb-8"><div className="text-5xl mb-2">🧊</div><h1 className="text-2xl font-bold">冰式 AI 安全网关</h1></div>
         <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
           <button onClick={()=>setIsReg(false)} className={`flex-1 py-1.5 text-sm rounded ${!isReg?'bg-white shadow text-blue-600':''}`}>登录</button>
@@ -152,6 +149,9 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
+  // 🛡️ 这里使用了普通的 React 状态来代替缺失的 Tabs 组件依赖
+  const [rechargeTab, setRechargeTab] = useState<'card' | 'online'>('card');
+
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -292,10 +292,10 @@ export default function Home() {
         </nav>
 
         <Card className="w-full max-w-4xl flex flex-col bg-white shadow-xl h-[750px] border-none rounded-t-none rounded-b-2xl overflow-hidden">
-          <div className="p-3 border-b bg-gray-50/50 flex justify-between items-center">
-            <div className="flex gap-2">{user.role==='admin' && <span className="text-[8px] bg-red-100 text-red-500 px-1 rounded flex items-center font-bold animate-pulse">ADMIN_MODE</span>}</div>
+          <div className="p-3 border-b bg-gray-50/50 flex justify-between items-center text-[10px]">
+            <div className="flex gap-2">{user.role==='admin' && <span className="bg-red-100 text-red-500 px-1 rounded font-bold animate-pulse uppercase">Admin</span>}</div>
             <Select value={model} onValueChange={setModel}>
-              <SelectTrigger className="w-32 h-8 border-none bg-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-32 h-7 border-none bg-transparent font-bold"><SelectValue /></SelectTrigger>
               <SelectContent><SelectItem value="gemini">Gemini 3 Pro</SelectItem></SelectContent>
             </Select>
           </div>
@@ -315,7 +315,7 @@ export default function Home() {
                     {m.role === 'user' && typeof m.content === 'object' ? (
                       <div className="space-y-2">
                         {m.content.images?.length > 0 && <div className="grid grid-cols-3 gap-1">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-full aspect-square object-cover rounded-lg"/>))}</div>}
-                        {m.content.file && <div className="flex items-center gap-1 text-[10px] opacity-70"><FileCode size={10}/>{m.content.file}</div>}
+                        {m.content.file && <div className="flex items-center gap-1 text-[10px] opacity-70 border p-1 rounded"><FileCode size={10}/>{m.content.file}</div>}
                         <p className="text-sm">{m.content.text}</p>
                       </div>
                     ) : (
@@ -333,7 +333,7 @@ export default function Home() {
           </div>
 
           <div className="p-4 bg-white border-t space-y-2">
-            {images.length > 0 && <div className="flex gap-1 mb-2">{images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12"><img src={img} className="w-full h-full object-cover rounded border"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10}/></button></div>))}</div>}
+            {images.length > 0 && <div className="flex gap-1 mb-2 overflow-x-auto">{images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12 flex-shrink-0"><img src={img} className="w-full h-full object-cover rounded border"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10}/></button></div>))}</div>}
             {file && <div className="bg-slate-50 p-2 rounded text-xs flex justify-between items-center border mb-2"><span>📄 {file.name}</span><button onClick={()=>setFile(null)}><X size={14}/></button></div>}
             
             {isLoading ? (
@@ -351,27 +351,53 @@ export default function Home() {
       </div>
 
       {user?.role === 'admin' && (
-        <div className="w-80 bg-slate-900 text-white p-4 h-screen border-l flex flex-col">
-          <h3 className="font-bold mb-4 flex items-center gap-2 text-red-400"><Shield size={16}/> 管理后台</h3>
+        <div className="w-80 bg-slate-900 text-white p-4 h-screen border-l flex flex-col animate-in slide-in-from-right duration-500">
+          <h3 className="font-bold mb-4 flex items-center gap-2 text-red-400 border-b border-slate-800 pb-2"><Shield size={16}/> 管理终端</h3>
           <div className="flex-1 overflow-y-auto space-y-2">
             {JSON.parse(localStorage.getItem("my_ai_users_db") || "[]").map((u:any)=>(
-              <div key={u.id} className="bg-slate-800 p-3 rounded-lg text-xs">
+              <div key={u.id} className="bg-slate-800 p-3 rounded-lg text-xs border border-slate-700">
                 <div className="font-bold text-blue-400">{u.nickname}</div>
-                <div>ID: {u.id} | 余额: <span className="text-green-400">${u.balance}</span></div>
+                <div className="text-slate-500 font-mono mt-1">ID: {u.id}</div>
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-gray-500">{u.regTime.split(' ')[0]}</span>
+                  <span className="text-green-400 font-bold">${u.balance}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
 
+      {/* 💳 改良版充值界面：不再依赖 Tabs 组件 */}
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}>
-        <DialogContent className="sm:max-w-xs text-center p-6">
-          <h3 className="font-bold mb-2">卡密兑换</h3>
-          <Input id="card-input" placeholder="输入卡密" className="text-center mb-4 uppercase" />
-          <Button onClick={()=>{
-            const val = (document.getElementById('card-input') as HTMLInputElement).value;
-            if(val==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功充值 $10"); } else { alert("卡密无效"); }
-          }} className="w-full bg-blue-600">核销卡密</Button>
+        <DialogContent className="sm:max-w-md text-center p-6">
+          <DialogHeader><DialogTitle className="text-center">账户充值 (USD)</DialogTitle></DialogHeader>
+          
+          {/* 自定义 Tab 切换按钮 */}
+          <div className="flex bg-slate-100 p-1 rounded-lg my-4">
+             <button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 text-xs rounded ${rechargeTab==='card'?'bg-white shadow font-bold':'text-gray-500'}`}>卡密核销</button>
+             <button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 text-xs rounded ${rechargeTab==='online'?'bg-white shadow font-bold':'text-gray-500'}`}>在线支付</button>
+          </div>
+
+          {rechargeTab === 'card' ? (
+             <div className="space-y-4 animate-in fade-in duration-300">
+                <p className="text-[10px] text-gray-400">请输入您购买的 16 位卡密代码</p>
+                <Input id="card-input" placeholder="BOSS-XXXX-XXXX" className="text-center font-mono uppercase border-blue-100" />
+                <Button onClick={()=>{
+                  const val = (document.getElementById('card-input') as HTMLInputElement).value;
+                  if(val.toUpperCase()==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功充值 $10.00"); } else { alert("卡密无效"); }
+                }} className="w-full bg-blue-600">立即核销</Button>
+             </div>
+          ) : (
+             <div className="space-y-4 animate-in fade-in duration-300 py-4 opacity-50 grayscale">
+                <div className="grid grid-cols-2 gap-2">
+                   <div className="border rounded p-2 text-xs font-bold">$5.00</div>
+                   <div className="border rounded p-2 text-xs font-bold">$10.00</div>
+                </div>
+                <Button disabled variant="outline" className="w-full">在线支付维护中</Button>
+                <p className="text-[10px] text-orange-500">请联系管理员购买卡密</p>
+             </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
