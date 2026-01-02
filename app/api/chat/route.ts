@@ -28,3 +28,5 @@ export async function POST(req: Request) {
     return new Response("错误: " + error.message, { status: 500 });
   }
 }
+
+// 强制更新测试
