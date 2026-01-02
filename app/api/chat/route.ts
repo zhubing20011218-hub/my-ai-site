@@ -8,11 +8,12 @@ export async function POST(req: Request) {
   try {
     const { messages } = await req.json();
 
-    // 🏆 这里的名字来自你的截图 image_c33772.png
-    // 既然你的后台显示这个模型，那用它绝对错不了！
-    const modelName = 'gemini-3-pro-preview'; 
+    // 🔍 关键修改：换回最稳、免费额度最高的 Flash 模型
+    // Gemini 3 Pro (你的上一个模型) 额度是 0，所以会报错
+    // gemini-1.5-flash 是目前 Google 的免费主力，绝对能通！
+    const modelName = 'gemini-1.5-flash'; 
 
-    console.log(`1. 正在呼叫 Google 最新模型: ${modelName}...`);
+    console.log(`1. 正在呼叫免费模型: ${modelName}...`);
 
     const result = await generateText({
       model: google(modelName),
@@ -25,8 +26,10 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("❌ 报错详情:", error);
+    
+    // 如果万一 1.5-flash 也不行，我们打印出来看
     return new Response(JSON.stringify({ 
-      error: "Google API 报错", 
+      error: "API配额或模型错误", 
       details: error.message 
     }), { 
       status: 500,
@@ -34,4 +37,4 @@ export async function POST(req: Request) {
     });
   }
 }
-// 强制更新标记: 使用截图中的 gemini-3 模型
+// 强制更新标记: 切换回免费 Flash 模型
