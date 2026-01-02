@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 // ✨ 组件1：复制按钮 (不变)
@@ -41,13 +41,11 @@ function CopyButton({ content }: { content: string }) {
   )
 }
 
-// 🧠 组件2：终端式思维链 (Terminal Thinking)
-// 核心逻辑：顺序执行 1->2->3->4，带子任务闪烁
+// 🧠 组件2：终端式思维链 (节奏已优化)
 function Thinking({ plan }: { plan: string[] }) {
   const [currentStep, setCurrentStep] = useState(0)
-  const [logs, setLogs] = useState<string[]>([]) // 模拟子任务日志
+  const [logs, setLogs] = useState<string[]>([]) 
 
-  // 模拟的子任务库 (假装在做很具体的微操)
   const subTasks = [
     "分配内存堆栈...", "挂载上下文...", "验证Token有效性...", 
     "连接向量数据库...", "执行余弦相似度搜索...", "过滤冗余信息...",
@@ -55,23 +53,24 @@ function Thinking({ plan }: { plan: string[] }) {
     "渲染Markdown流...", "最终格式校验..."
   ]
 
-  // 主流程控制：每 800ms 走完一个大步骤
+  // 🔥 优化1：调慢节奏
+  // 之前是 1500ms，现在改为 2800ms (接近3秒一步)
+  // 这样 4 步走完大概需要 10-12 秒，正好是 Gemini Pro 思考的时间
   useEffect(() => {
-    if (currentStep < 4) {
+    if (currentStep < 3) { // 只自动走到第3步，第4步留给正文出现时触发
       const timer = setTimeout(() => {
         setCurrentStep(prev => prev + 1)
-      }, 1500) // 这里控制整体速度，1.5秒一步
+      }, 2800) 
       return () => clearTimeout(timer)
     }
   }, [currentStep])
 
-  // 子任务控制：疯狂刷日志
   useEffect(() => {
     if (currentStep >= 4) return;
     const interval = setInterval(() => {
       const randomLog = subTasks[Math.floor(Math.random() * subTasks.length)]
-      setLogs(prev => [randomLog, ...prev].slice(0, 3)) // 只保留最近3条
-    }, 200) // 200ms 刷一条微操
+      setLogs(prev => [randomLog, ...prev].slice(0, 3)) 
+    }, 400) // 日志刷新也稍微慢一点点，不那么眼花
     return () => clearInterval(interval)
   }, [currentStep])
 
@@ -81,7 +80,6 @@ function Thinking({ plan }: { plan: string[] }) {
         <Loader2 size={16} className="text-blue-500 animate-spin" />
       </div>
       
-      {/* 终端卡片风格 */}
       <div className="bg-slate-50 border border-blue-100 rounded-xl p-4 shadow-sm w-full font-mono text-sm">
         <div className="flex items-center gap-2 text-xs text-gray-400 mb-3 border-b border-gray-100 pb-2">
           <Terminal size={12} />
@@ -90,13 +88,13 @@ function Thinking({ plan }: { plan: string[] }) {
 
         <div className="space-y-3">
           {plan.map((stepText, index) => {
+            // 逻辑微调：如果是最后一步，且还在 loading，保持闪烁
             const isDone = index < currentStep;
             const isActive = index === currentStep;
             const isPending = index > currentStep;
 
             return (
               <div key={index} className={`flex flex-col transition-all duration-300 ${isPending ? 'opacity-30' : 'opacity-100'}`}>
-                {/* 主步骤行 */}
                 <div className="flex items-center gap-3">
                   <div className={`
                     w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold border
@@ -111,7 +109,6 @@ function Thinking({ plan }: { plan: string[] }) {
                   </span>
                 </div>
 
-                {/* 活跃步骤下的子任务日志 (1.1, 1.2...) */}
                 {isActive && (
                   <div className="ml-8 mt-1 space-y-1">
                     {logs.map((log, i) => (
@@ -135,7 +132,9 @@ export default function Home() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   
-  // 🆕 默认步骤：防止卡顿，开局直接有东西看
+  // 🆕 引用：用来控制打断
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   const defaultSteps = ["正在解析用户意图...", "正在构建检索策略...", "正在执行逻辑推理...", "正在生成最终回复..."]
   const [thinkingSteps, setThinkingSteps] = useState<string[]>(defaultSteps)
   
@@ -153,20 +152,37 @@ export default function Home() {
     }
   }, [])
 
+  // 🛑 新增：打断功能
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort() // 掐断网线
+      abortControllerRef.current = null
+    }
+    setIsLoading(false)
+    
+    // ✨ 体验优化：把最后一条用户发的问题，填回输入框，方便修改
+    const lastUserMsg = messages.filter(m => m.role === 'user').pop()
+    if (lastUserMsg) {
+      setInput(lastUserMsg.content)
+    }
+  }
+
   const handleSend = async (e: any) => {
     e?.preventDefault()
     if (!input.trim() || isLoading) return
 
     const userMsg = { role: 'user', content: input }
     setMessages(prev => [...prev, userMsg])
-    setInput("")
+    setInput("") // 清空输入框
     setIsLoading(true)
-    
-    // 🔥 关键修改：重置步骤为默认，确保 UI 立刻有反应
     setThinkingSteps(defaultSteps) 
+    
+    // 🆕 初始化打断控制器
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     try {
-      // 🚀 快脑：去获取真实计划 (静默更新)
+      // 快脑 (不重要，不需要 abort)
       fetch('/api/plan', {
         method: 'POST',
         body: JSON.stringify({ message: userMsg.content })
@@ -174,20 +190,20 @@ export default function Home() {
       .then(res => res.text())
       .then(text => {
         if (text && text.includes('|')) {
-          // 拿到真实计划后，替换掉默认的
           setThinkingSteps(text.split('|'))
         }
       })
-      .catch(() => {}) // 失败了就用默认的，不管它
+      .catch(() => {}) 
 
-      // 🚀 慢脑：获取回复
+      // 慢脑 (核心请求，绑定 signal)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, userMsg],
           model: model
-        })
+        }),
+        signal: controller.signal // 👈 绑定信号
       })
 
       if (!response.ok) throw new Error("服务器繁忙")
@@ -214,13 +230,17 @@ export default function Home() {
       }
 
     } catch (error: any) {
-      alert("错误: " + error.message)
+      if (error.name === 'AbortError') {
+        console.log("用户手动停止生成")
+      } else {
+        alert("错误: " + error.message)
+      }
     } finally {
       setIsLoading(false)
+      abortControllerRef.current = null
     }
   }
 
-  // 充值逻辑
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
@@ -301,17 +321,31 @@ export default function Home() {
                </div>
              ))}
 
-             {/* 👇 只有在真正加载时才显示 Thinking */}
              {isLoading && <Thinking plan={thinkingSteps} />}
              
              <div ref={messagesEndRef} />
           </div>
 
           <div className="p-4 bg-white border-t">
-            <form onSubmit={handleSend} className="flex gap-2">
-              <Input value={input} onChange={e => setInput(e.target.value)} className="flex-1" placeholder="输入问题..." />
-              <Button type="submit" disabled={isLoading} className="bg-blue-600 hover:bg-blue-700">发送</Button>
-            </form>
+            {/* 👇 核心修改：根据状态切换 发送/停止 按钮 */}
+            {isLoading ? (
+               <div className="flex gap-2">
+                 <Button 
+                   onClick={stopGeneration} 
+                   className="w-full bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 flex items-center justify-center gap-2"
+                 >
+                   <Square size={16} fill="currentColor" />
+                   停止生成 (Stop)
+                 </Button>
+               </div>
+            ) : (
+              <form onSubmit={handleSend} className="flex gap-2">
+                <Input value={input} onChange={e => setInput(e.target.value)} className="flex-1" placeholder="输入问题..." />
+                <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
+                  <Send size={18} />
+                </Button>
+              </form>
+            )}
           </div>
         </Card>
       </div>
