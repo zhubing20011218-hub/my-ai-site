@@ -6,7 +6,9 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+// 🛡️ 兼容处理：如果 Tabs 还没安装好，我们用普通 div 代替，防止崩溃
+import * as TabsPrimitive from "@radix-ui/react-tabs" 
+
 import { 
   Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, 
   Lightbulb, Paperclip, X, FileCode, FileText, Plus, Mail, Phone, Lock, LogOut, 
@@ -28,8 +30,10 @@ function PasswordStrengthMeter({ password }: { password: string }) {
   const colors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-blue-500", "bg-green-500"];
   if (!password) return null;
   return (
-    <div className="mt-2 space-y-1"><div className="flex gap-1 h-1">{[0,1,2,3,4].map(i=>(<div key={i} className={`flex-1 rounded-full ${i<score?colors[score-1]:'bg-gray-200'}`}/>))}</div>
-    <p className="text-[10px] text-gray-500 text-right">安全等级: {["危险","弱","一般","强","极高"][Math.min(score,4)]}</p></div>
+    <div className="mt-2 space-y-1">
+      <div className="flex gap-1 h-1">{[0,1,2,3,4].map(i=>(<div key={i} className={`flex-1 rounded-full ${i<score?colors[score-1]:'bg-gray-200'}`}/>))}</div>
+      <p className="text-[10px] text-gray-500 text-right">安全等级: {["危险","弱","一般","强","极高"][Math.min(score,4)]}</p>
+    </div>
   );
 }
 
@@ -77,7 +81,7 @@ function Thinking({ plan }: { plan: string[] }) {
 }
 
 // ==========================================
-// 👤 认证与管理页面
+// 👤 认证页面
 // ==========================================
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
@@ -114,7 +118,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
         }
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
         const u = db.find((x:any)=>x.account===account && x.password===password);
-        if(u){ localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u); } else alert("错");
+        if(u){ localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u); } else alert("账号或密码错误");
       }
     }, 1000);
   };
@@ -188,6 +192,7 @@ export default function Home() {
 
   const handleUpload = (e: any) => {
     const files = Array.from(e.target.files as FileList);
+    if (files.length === 0) return;
     if (files[0].type.startsWith('image/')) {
       if(images.length + files.length > 9) return alert("最多9张");
       files.forEach(f => {
@@ -206,19 +211,17 @@ export default function Home() {
     if (!content.trim() && images.length === 0 && !file) return;
     if (!handleTX('consume', 0.01, "AI 提问消耗")) return;
 
-    // 构建显示的消息
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
     setMessages(prev => [...prev, uiMsg]);
     
-    // 清理输入
-    const rawText = content; setInput(""); setImages([]); setFile(null); setIsLoading(true);
+    setInput(""); setImages([]); setFile(null); setIsLoading(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: messages.concat({ role: 'user', content: rawText }), model }),
+        body: JSON.stringify({ messages: messages.concat({ role: 'user', content: content }), model }),
         signal: ctrl.signal
       });
       if (!response.body) return;
@@ -248,16 +251,16 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
-      <div className={`flex flex-1 flex-col items-center justify-center p-4 transition-all duration-500`}>
+      <div className="flex flex-1 flex-col items-center justify-center p-4 transition-all duration-500">
         <nav className="w-full max-w-4xl bg-white border-b h-14 flex items-center justify-between px-6 sticky top-0 z-50 rounded-t-2xl shadow-sm">
-          <div className="font-bold flex items-center gap-2 text-blue-600"><div className="w-6 h-6 bg-blue-600 text-white rounded flex items-center justify-center">冰</div>冰式AI站</div>
+          <div className="font-bold flex items-center gap-2 text-blue-600">🧊 冰式AI站</div>
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
             <DialogTrigger asChild>
               <button className="flex items-center gap-2 bg-gray-50 hover:bg-gray-100 p-1 pr-3 rounded-full border transition-all">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${user.role==='admin'?'bg-red-500':'bg-blue-600'}`}>{user.nickname[0].toUpperCase()}</div>
                 <div className="text-left leading-tight hidden sm:block">
                   <div className="text-[10px] font-bold text-gray-800">{user.nickname}</div>
-                  <div className="text-[8px] text-gray-400">UID: {user.id}</div>
+                  <div className="text-[8px] text-gray-400">点击查询余额</div>
                 </div>
               </button>
             </DialogTrigger>
@@ -276,10 +279,12 @@ export default function Home() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-bold text-sm"><History size={16} className="text-blue-500"/> 流水明细</div>
-                  <div className="border rounded-xl max-h-[200px] overflow-y-auto"><table className="w-full text-[11px] text-left">
-                    <thead className="bg-gray-50 border-b sticky top-0"><tr><th className="p-2">明细</th><th className="p-2 text-right">金额</th></tr></thead>
-                    <tbody className="divide-y">{transactions.map(t=>(<tr key={t.id}><td className="p-2"><div>{t.description}</div><div className="text-[9px] text-gray-400">{t.time}</div></td><td className={`p-2 text-right font-bold ${t.type==='topup'?'text-green-600':'text-red-500'}`}>{t.type==='topup'?'+':'-'}${t.amount}</td></tr>))}</tbody>
-                  </table></div>
+                  <div className="border rounded-xl max-h-[200px] overflow-y-auto">
+                    <table className="w-full text-[11px] text-left">
+                      <thead className="bg-gray-50 border-b sticky top-0"><tr><th className="p-2">明细</th><th className="p-2 text-right">金额</th></tr></thead>
+                      <tbody className="divide-y">{transactions.map(t=>(<tr key={t.id}><td className="p-2"><div>{t.description}</div><div className="text-[9px] text-gray-400">{t.time}</div></td><td className={`p-2 text-right font-bold ${t.type==='topup'?'text-green-600':'text-red-500'}`}>{t.type==='topup'?'+':'-'}${t.amount}</td></tr>))}</tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </DialogContent>
@@ -288,36 +293,34 @@ export default function Home() {
 
         <Card className="w-full max-w-4xl flex flex-col bg-white shadow-xl h-[750px] border-none rounded-t-none rounded-b-2xl overflow-hidden">
           <div className="p-3 border-b bg-gray-50/50 flex justify-between items-center">
-            <div className="flex gap-2">{user.role==='admin' && <span className="text-[8px] bg-red-100 text-red-500 px-1 rounded flex items-center font-bold">ADMIN_ROOT</span>}</div>
-            <Select value={model} onValueChange={setModel}><SelectTrigger className="w-32 h-8 border-none bg-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="gemini">Gemini 3 Pro</SelectItem><SelectItem value="gpt4">GPT-4.5 (内部)</SelectItem></SelectContent></Select>
+            <div className="flex gap-2">{user.role==='admin' && <span className="text-[8px] bg-red-100 text-red-500 px-1 rounded flex items-center font-bold animate-pulse">ADMIN_MODE</span>}</div>
+            <Select value={model} onValueChange={setModel}>
+              <SelectTrigger className="w-32 h-8 border-none bg-transparent font-bold text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="gemini">Gemini 3 Pro</SelectItem></SelectContent>
+            </Select>
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
             {messages.length === 0 && (
-              <div className="h-full flex flex-col items-center justify-center text-gray-300 animate-in fade-in zoom-in duration-1000">
+              <div className="h-full flex flex-col items-center justify-center text-gray-300">
                 <div className="text-8xl mb-4">🧊</div>
                 <p className="text-sm font-medium">你好，{user.nickname}。今天需要什么帮助？</p>
-                <div className="flex gap-2 mt-4 opacity-50"><button onClick={()=>handleSend(null,"分析上海天气")} className="px-3 py-1 border rounded-full text-xs">🌦️ 上海天气</button><button onClick={()=>handleSend(null,"写段代码")} className="px-3 py-1 border rounded-full text-xs">💻 辅助编程</button></div>
               </div>
             )}
             {messages.map((m, i) => (
               <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'} animate-in fade-in slide-in-from-bottom-2`}>
                 {m.role!=='user' && <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center mt-1"><Bot size={16} className="text-blue-600" /></div>}
-                <div className={`max-w-[85%] flex flex-col gap-2`}>
+                <div className="max-w-[85%] flex flex-col gap-2">
                   <div className={`rounded-2xl px-4 py-2.5 shadow-sm ${m.role==='user'?'bg-blue-600 text-white':'bg-white border text-gray-800'}`}>
-                    {m.role === 'user' && typeof m.content === 'object' && (
-                      <div className="mb-2 space-y-2">
-                        {m.content.images?.length > 0 && <div className="grid grid-cols-3 gap-1">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-full aspect-square object-cover rounded-lg border border-white/20"/>))}</div>}
-                        {m.content.file && <div className="flex items-center gap-2 bg-black/10 p-2 rounded-lg text-[10px]"><FileCode size={12}/>{m.content.file}</div>}
-                        {m.content.text && <p className="text-sm opacity-90">{m.content.text}</p>}
+                    {m.role === 'user' && typeof m.content === 'object' ? (
+                      <div className="space-y-2">
+                        {m.content.images?.length > 0 && <div className="grid grid-cols-3 gap-1">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-full aspect-square object-cover rounded-lg"/>))}</div>}
+                        {m.content.file && <div className="flex items-center gap-1 text-[10px] opacity-70"><FileCode size={10}/>{m.content.file}</div>}
+                        <p className="text-sm">{m.content.text}</p>
                       </div>
-                    )}
-                    {m.role === 'user' && typeof m.content === 'string' && <p className="text-sm">{m.content}</p>}
-                    {m.role !== 'user' && (
-                      <div className={`prose prose-sm max-w-none ${m.role==='user'?'prose-invert':''}`}>
-                        {/* ✅ 修复红线：在外层控制样式，内层只传内容 */}
-                        <ReactMarkdown>{m.content}</ReactMarkdown>
+                    ) : (
+                      <div className={`prose prose-sm max-w-none ${m.role==='user' ? 'prose-invert' : ''}`}>
+                         <ReactMarkdown>{typeof m.content === 'string' ? m.content : m.content.text}</ReactMarkdown>
                       </div>
                     )}
                     {m.role!=='user' && <div className="mt-2 pt-2 border-t flex justify-end"><CopyButton content={m.content}/></div>}
@@ -330,13 +333,16 @@ export default function Home() {
           </div>
 
           <div className="p-4 bg-white border-t space-y-2">
-            {images.length > 0 && <div className="flex gap-1 overflow-x-auto pb-2">{images.map((img,idx)=>(<div key={idx} className="relative group flex-shrink-0"><img src={img} className="w-12 h-12 object-cover rounded-md border shadow-sm"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10}/></button></div>))}<button onClick={()=>fileInputRef.current?.click()} className="w-12 h-12 border-2 border-dashed rounded-md flex items-center justify-center text-gray-300 hover:text-blue-500 hover:border-blue-500"><Plus size={16}/></button></div>}
-            {file && <div className="flex items-center gap-2 bg-gray-50 p-2 rounded-lg w-fit border"><FileText size={14} className="text-blue-500"/> <span className="text-[10px] max-w-[100px] truncate">{file.name}</span><button onClick={()=>setFile(null)} className="text-red-400"><X size={12}/></button></div>}
-            {isLoading ? (<Button onClick={()=>abortRef.current?.abort()} className="w-full bg-red-50 text-red-600 border-red-200 hover:bg-red-100 gap-2"><Square size={14} fill="currentColor"/> 停止生成</Button>) : (
-              <form onSubmit={handleSend} className="flex gap-2 items-center bg-gray-100 p-1 rounded-xl border-gray-200 border">
+            {images.length > 0 && <div className="flex gap-1 mb-2">{images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12"><img src={img} className="w-full h-full object-cover rounded border"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5"><X size={10}/></button></div>))}</div>}
+            {file && <div className="bg-slate-50 p-2 rounded text-xs flex justify-between items-center border mb-2"><span>📄 {file.name}</span><button onClick={()=>setFile(null)}><X size={14}/></button></div>}
+            
+            {isLoading ? (
+              <Button onClick={()=>abortRef.current?.abort()} className="w-full bg-red-50 text-red-600 border-red-200 hover:bg-red-100 gap-2"><Square size={14} fill="currentColor"/> 停止生成</Button>
+            ) : (
+              <form onSubmit={handleSend} className="flex gap-2 items-center bg-gray-100 p-1 rounded-xl border">
                 <input type="file" ref={fileInputRef} hidden multiple accept="image/*,.py,.js,.txt" onChange={handleUpload} />
-                <Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-gray-400"><Paperclip size={18}/></Button>
-                <Input value={input} onChange={e=>setInput(e.target.value)} className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm" placeholder="有问题尽管问我... (每次消耗 $0.01)" />
+                <Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-gray-400 hover:text-blue-600"><Paperclip size={18}/></Button>
+                <Input value={input} onChange={e=>setInput(e.target.value)} className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm" placeholder="输入消息 (消耗 $0.01)" />
                 <Button type="submit" disabled={!input.trim() && images.length===0 && !file} className="bg-blue-600 hover:bg-blue-700 h-9 px-4 rounded-lg"><Send size={16}/></Button>
               </form>
             )}
@@ -345,24 +351,28 @@ export default function Home() {
       </div>
 
       {user?.role === 'admin' && (
-        <div className="w-80 bg-slate-900 text-white p-4 h-screen border-l border-slate-700 flex flex-col gap-4 animate-in slide-in-from-right duration-700">
-          <div className="flex items-center gap-2 font-bold text-red-400 border-b border-slate-800 pb-2"><Shield size={16}/> 管理终端</div>
-          <div className="space-y-2 overflow-y-auto flex-1">{JSON.parse(localStorage.getItem("my_ai_users_db") || "[]").map((u:any)=>(<div key={u.id} className="bg-slate-800 p-3 rounded-lg border border-slate-700">
-            <div className="font-bold text-sm text-blue-400">{u.nickname}</div><div className="text-[9px] text-gray-500">ID: {u.id}</div>
-            <div className="flex justify-between mt-2 text-xs"><span className="text-green-400 font-mono">${u.balance}</span><span className="text-gray-500 text-[9px]">{u.regTime.split(' ')[0]}</span></div>
-          </div>))}</div>
-          <div className="text-[8px] text-slate-600 text-center uppercase tracking-widest">Internal Access Only</div>
+        <div className="w-80 bg-slate-900 text-white p-4 h-screen border-l flex flex-col">
+          <h3 className="font-bold mb-4 flex items-center gap-2 text-red-400"><Shield size={16}/> 管理后台</h3>
+          <div className="flex-1 overflow-y-auto space-y-2">
+            {JSON.parse(localStorage.getItem("my_ai_users_db") || "[]").map((u:any)=>(
+              <div key={u.id} className="bg-slate-800 p-3 rounded-lg text-xs">
+                <div className="font-bold text-blue-400">{u.nickname}</div>
+                <div>ID: {u.id} | 余额: <span className="text-green-400">${u.balance}</span></div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* 充值弹窗 */}
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}>
-        <DialogContent className="sm:max-w-xs"><div className="p-4 space-y-4 text-center">
-          <h3 className="font-bold">卡密兑换 (USD)</h3><p className="text-[10px] text-gray-400">请输入您持有的 16 位大写兑换码</p>
-          <Input id="card-code" className="text-center font-mono uppercase" placeholder="BOSS-XXXX-XXXX" />
-          <Button onClick={()=>{const v=(document.getElementById('card-code') as any).value; if(v==="BOSS"){handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("充值成功 $10");} else alert("无效");}} className="w-full bg-blue-600">核销卡密</Button>
-          <div className="flex gap-2 grayscale opacity-50"><Button variant="outline" className="flex-1 text-[10px]" disabled>支付宝</Button><Button variant="outline" className="flex-1 text-[10px]" disabled>微信</Button></div>
-        </div></DialogContent>
+        <DialogContent className="sm:max-w-xs text-center p-6">
+          <h3 className="font-bold mb-2">卡密兑换</h3>
+          <Input id="card-input" placeholder="输入卡密" className="text-center mb-4 uppercase" />
+          <Button onClick={()=>{
+            const val = (document.getElementById('card-input') as HTMLInputElement).value;
+            if(val==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功充值 $10"); } else { alert("卡密无效"); }
+          }} className="w-full bg-blue-600">核销卡密</Button>
+        </DialogContent>
       </Dialog>
     </div>
   );
