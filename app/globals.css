@@ -124,3 +124,26 @@
     @apply bg-background text-foreground;
   }
 }
+/* ... 上面是原有的代码，不要动 ... */
+
+/* 👇 新增：强制 Markdown 表格自适应与换行 */
+.prose table {
+  width: 100% !important;
+  display: table !important; /* 强制它是表格，不是滚动块 */
+  table-layout: fixed !important; /* 关键：固定布局，防止被内容撑开 */
+}
+
+.prose th, 
+.prose td {
+  white-space: normal !important; /* 强制文字换行 */
+  word-wrap: break-word !important; /* 长单词强制打断 */
+  overflow-wrap: break-word !important;
+  padding: 8px 4px !important; /* 稍微减小一点内边距，省空间 */
+}
+
+/* 手机端特别优化：如果列数实在太多，允许表格内部微调，但绝不撑爆页面 */
+@media (max-width: 640px) {
+  .prose th, .prose td {
+    font-size: 12px; /* 手机上字体稍微小一点点，为了显示更多内容 */
+  }
+}
