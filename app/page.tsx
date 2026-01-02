@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Loader2, Terminal, ChevronRight, Square, Send, Lightbulb, Paperclip, X, FileCode, FileText, Image as ImageIcon } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 // ✨ 组件1：复制按钮
@@ -124,6 +124,11 @@ export default function Home() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // 📁 附件状态管理
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<{name: string, content: string} | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const defaultSteps = ["正在解析用户意图...", "正在构建检索策略...", "正在执行逻辑推理...", "正在生成最终回复..."]
   const [thinkingSteps, setThinkingSteps] = useState<string[]>(defaultSteps)
@@ -134,7 +139,7 @@ export default function Home() {
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isLoading, thinkingSteps])
+  }, [messages, isLoading, thinkingSteps, selectedImage, selectedFile])
 
   useEffect(() => {
     if (!localStorage.getItem("my_ai_user_id")) {
@@ -149,20 +154,86 @@ export default function Home() {
     }
     setIsLoading(false)
     const lastUserMsg = messages.filter(m => m.role === 'user').pop()
-    if (lastUserMsg) setInput(lastUserMsg.content)
+    if (lastUserMsg) {
+       // 如果上一条消息是混合内容，只恢复文本部分到输入框
+       const text = typeof lastUserMsg.content === 'string' ? lastUserMsg.content : lastUserMsg.content.text
+       setInput(text)
+    }
   }
 
-  // 🔥 核心修改：允许直接传入 text 发送 (给气泡按钮用)
+  // 📂 核心逻辑：处理文件上传
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // 限制大小 (5MB)
+    if (file.size > 5 * 1024 * 1024) { 
+      alert("文件太大啦，请上传 5MB 以内的文件")
+      return
+    }
+
+    // A. 如果是图片 -> 转 Base64
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string)
+        setSelectedFile(null) // 互斥，清空文件
+      }
+      reader.readAsDataURL(file)
+    } 
+    // B. 如果是文本/代码 -> 读取内容
+    else {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setSelectedFile({
+          name: file.name,
+          content: reader.result as string
+        })
+        setSelectedImage(null) // 互斥，清空图片
+      }
+      reader.readAsText(file) // 关键：作为文本读取
+    }
+  }
+
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault()
     
-    // 如果有 textOverride，就用它；否则用 input 状态
     const contentToSend = textOverride || input
-    if (!contentToSend.trim() || isLoading) return
+    // 如果没有输入文本，也没有附件，就不发送
+    if ((!contentToSend.trim() && !selectedImage && !selectedFile) || isLoading) return
 
-    const userMsg = { role: 'user', content: contentToSend }
+    // 构建发给后端的 API 消息体
+    let apiContent: any = contentToSend
+    
+    // 构建显示在前端 UI 的消息体
+    let uiContent: any = contentToSend
+
+    // 场景 1: 有图片
+    if (selectedImage) {
+      uiContent = { type: 'image_mixed', text: contentToSend, image: selectedImage }
+      apiContent = [
+        { type: 'text', text: contentToSend || "请分析这张图片" },
+        { type: 'image', image: selectedImage }
+      ]
+    }
+    // 场景 2: 有代码/文档
+    else if (selectedFile) {
+      // 策略：把文件内容“拼”在用户问题的后面，假装是用户粘贴进去的
+      const promptWithFile = `${contentToSend}\n\n--- 附件文件: ${selectedFile.name} ---\n${selectedFile.content}\n--- 文件结束 ---`
+      
+      uiContent = { type: 'file_mixed', text: contentToSend, fileName: selectedFile.name }
+      apiContent = promptWithFile // 直接发拼接好的长文本
+    }
+
+    const userMsg = { role: 'user', content: uiContent }
     setMessages(prev => [...prev, userMsg])
+    
+    // 清空输入区
     setInput("") 
+    setSelectedImage(null)
+    setSelectedFile(null)
+    if(fileInputRef.current) fileInputRef.current.value = ""
+
     setIsLoading(true)
     setThinkingSteps(defaultSteps) 
     
@@ -170,9 +241,12 @@ export default function Home() {
     abortControllerRef.current = controller
 
     try {
+      // 快脑 (只发文本摘要去分析意图)
+      const planText = typeof apiContent === 'string' ? apiContent : (contentToSend || "分析附件")
+      
       fetch('/api/plan', {
         method: 'POST',
-        body: JSON.stringify({ message: contentToSend })
+        body: JSON.stringify({ message: planText.substring(0, 500) }) // 截取一下防止太长
       })
       .then(res => res.text())
       .then(text => {
@@ -180,11 +254,16 @@ export default function Home() {
       })
       .catch(() => {}) 
 
+      // 慢脑 (发送完整内容)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMsg],
+          messages: messages.map(m => {
+             // 历史消息如果是对象，需要还原成文本给 API (简化处理)
+             if (typeof m.content !== 'string') return { role: m.role, content: m.content.text || "[附件]" }
+             return { role: m.role, content: m.content }
+          }).concat({ role: 'user', content: apiContent }), 
           model: model
         }),
         signal: controller.signal
@@ -273,7 +352,6 @@ export default function Home() {
                 <div className="text-center mt-20 text-gray-400">
                   <div className="text-6xl mb-4">🧊</div>
                   <div className="text-lg">有什么可以帮你的吗？</div>
-                  {/* 首页默认建议 */}
                   <div className="flex gap-2 justify-center mt-4">
                      <button onClick={() => handleSend(null, "分析上海未来一周天气")} className="px-3 py-1 bg-gray-100 rounded-full text-sm hover:bg-gray-200 text-gray-600 transition">🌦️ 上海天气</button>
                      <button onClick={() => handleSend(null, "写一个科幻短篇故事")} className="px-3 py-1 bg-gray-100 rounded-full text-sm hover:bg-gray-200 text-gray-600 transition">📝 写个故事</button>
@@ -282,8 +360,23 @@ export default function Home() {
              )}
              
              {messages.map((m, i) => {
-               // 🔥 核心逻辑：切割内容，分离出建议
-               const [content, relatedStr] = m.content.split('___RELATED___')
+               // 处理渲染：支持 纯文本 / 图片混合 / 文件混合
+               let content = ""
+               let imageSrc = null
+               let fileName = null
+               
+               if (typeof m.content === 'string') {
+                 content = m.content
+               } else if (m.content.type === 'image_mixed') {
+                 content = m.content.text
+                 imageSrc = m.content.image
+               } else if (m.content.type === 'file_mixed') {
+                 content = m.content.text
+                 fileName = m.content.fileName
+               }
+
+               // 切割“猜你想问”
+               const [mainText, relatedStr] = content.split('___RELATED___')
                const suggestions = relatedStr ? relatedStr.split('|').filter((s: string) => s.trim()) : []
 
                return (
@@ -296,18 +389,37 @@ export default function Home() {
                    
                    <div className="flex flex-col gap-2 max-w-[85%]">
                      <div className={`rounded-2xl px-5 py-3 shadow-sm overflow-hidden ${m.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-100 text-gray-800'}`}>
+                       
+                       {/* 📸 渲染图片附件 */}
+                       {imageSrc && (
+                         <div className="mb-3 rounded-lg overflow-hidden border border-white/20">
+                           <img src={imageSrc} alt="uploaded" className="max-w-full max-h-[300px] object-cover" />
+                         </div>
+                       )}
+
+                       {/* 📄 渲染文件附件 */}
+                       {fileName && (
+                         <div className="mb-3 p-3 bg-black/10 rounded-lg flex items-center gap-3 border border-white/10">
+                           <div className="p-2 bg-white rounded-lg">
+                             <FileCode size={20} className="text-blue-600" />
+                           </div>
+                           <div className="flex flex-col">
+                             <span className="text-sm font-bold opacity-90">已上传文件</span>
+                             <span className="text-xs opacity-75">{fileName}</span>
+                           </div>
+                         </div>
+                       )}
+
                        <div className={`prose prose-sm sm:prose-base max-w-none break-words leading-relaxed prose-p:my-2 prose-p:leading-7 prose-headings:font-bold prose-headings:my-3 prose-headings:text-gray-900 prose-li:my-1 prose-strong:font-bold prose-table:border prose-table:shadow-sm prose-table:rounded-lg prose-th:bg-gray-50 prose-th:p-3 prose-th:text-gray-700 prose-td:p-3 prose-td:border-t ${m.role === 'user' ? 'prose-invert prose-strong:text-white' : 'prose-strong:text-blue-600'}`}>
-                         {/* 只渲染切割后的正文部分 */}
-                         <ReactMarkdown>{content}</ReactMarkdown>
+                         <ReactMarkdown>{mainText}</ReactMarkdown>
                        </div>
                        {m.role !== 'user' && (
                          <div className="mt-2 pt-2 border-t border-gray-50 flex justify-end">
-                           <CopyButton content={content} />
+                           <CopyButton content={mainText} />
                          </div>
                        )}
                      </div>
 
-                     {/* 👇 渲染猜你想问气泡 (如果存在) */}
                      {suggestions.length > 0 && m.role !== 'user' && (
                        <div className="flex flex-wrap gap-2 mt-1">
                          <div className="flex items-center gap-1 text-xs text-blue-500 font-medium mb-1 w-full">
@@ -316,9 +428,9 @@ export default function Home() {
                          {suggestions.map((s: string, idx: number) => (
                            <button 
                              key={idx}
-                             onClick={() => handleSend(null, s.trim())} // 点击直接发送
+                             onClick={() => handleSend(null, s.trim())}
                              className="px-3 py-1.5 bg-white border border-blue-100 rounded-xl text-sm text-gray-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-all shadow-sm text-left animate-in zoom-in duration-300"
-                             style={{ animationDelay: `${idx * 100}ms` }} // 依次弹出，很帅
+                             style={{ animationDelay: `${idx * 100}ms` }}
                            >
                              {s.trim()}
                            </button>
@@ -341,7 +453,28 @@ export default function Home() {
              <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-4 bg-white border-t">
+          <div className="p-4 bg-white border-t space-y-3">
+             {/* 📸 附件预览区 (图片或文件) */}
+             {(selectedImage || selectedFile) && (
+               <div className="relative inline-block animate-in slide-in-from-bottom-2 fade-in">
+                 {selectedImage ? (
+                   <img src={selectedImage} alt="preview" className="h-16 w-16 object-cover rounded-lg border border-gray-200 shadow-sm" />
+                 ) : (
+                   <div className="h-16 w-auto px-4 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg">
+                     <FileText size={20} className="text-blue-500"/>
+                     <span className="text-sm text-gray-600 max-w-[150px] truncate">{selectedFile?.name}</span>
+                   </div>
+                 )}
+                 
+                 <button 
+                   onClick={() => { setSelectedImage(null); setSelectedFile(null); }}
+                   className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600 shadow-sm z-10"
+                 >
+                   <X size={12} />
+                 </button>
+               </div>
+             )}
+
             {isLoading ? (
                <div className="flex gap-2">
                  <Button 
@@ -353,7 +486,28 @@ export default function Home() {
                  </Button>
                </div>
             ) : (
-              <form onSubmit={(e) => handleSend(e)} className="flex gap-2">
+              <form onSubmit={(e) => handleSend(e)} className="flex gap-2 items-center">
+                {/* 📂 隐藏的文件输入框: 接受图片、文本、代码 */}
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  accept="image/*,.txt,.md,.js,.py,.html,.css,.json,.csv"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+                
+                {/* 📎 附件按钮 */}
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  size="icon"
+                  className="text-gray-500 hover:text-blue-600 hover:bg-blue-50"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="上传图片或文件"
+                >
+                  <Paperclip size={20} />
+                </Button>
+
                 <Input value={input} onChange={e => setInput(e.target.value)} className="flex-1" placeholder="输入问题..." />
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
                   <Send size={18} />
