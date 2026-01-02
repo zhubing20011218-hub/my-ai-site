@@ -18,10 +18,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Wallet, Copy, Check, Bot, User, Sparkles } from "lucide-react"
+import { Wallet, Copy, Check, Bot, User, Sparkles, Loader2 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// ✨ 组件1：复制按钮 (保持不变)
+// ✨ 组件1：复制按钮
 function CopyButton({ content }: { content: string }) {
   const [isCopied, setIsCopied] = useState(false)
   const handleCopy = async () => {
@@ -35,45 +35,57 @@ function CopyButton({ content }: { content: string }) {
     <button 
       onClick={handleCopy}
       className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-600 transition-colors py-1 px-2 rounded hover:bg-gray-100"
-      title="复制全部内容"
     >
       {isCopied ? <><Check size={14} className="text-green-500"/><span className="text-green-500">已复制</span></> : <><Copy size={14}/><span>复制</span></>}
     </button>
   )
 }
 
-// 🧠 组件2：动态思维链 (新增!)
-// 让 AI 看起来像是在真的思考，而不是卡住了
-function Thinking() {
-  const [step, setStep] = useState(0)
-  const steps = [
-    "正在分析您的意图...", 
-    "正在检索全球知识库...", 
-    "正在构建逻辑框架...", 
-    "正在组织语言..."
-  ]
+// 🧠 组件2：真实思维链 (Real Thinking)
+// 接收真实的 steps 数据，不再是死循环
+function Thinking({ steps }: { steps: string[] }) {
+  const [currentStepIndex, setCurrentStepIndex] = useState(0)
 
   useEffect(() => {
+    // 如果没有步骤，显示默认的
+    if (!steps || steps.length === 0) return;
+
+    // 每 1.5 秒切换一个步骤
     const interval = setInterval(() => {
-      setStep((prev) => (prev + 1) % steps.length)
-    }, 2000) // 每2秒换一句话
+      setCurrentStepIndex((prev) => {
+        // 如果走到最后一步，就停在最后一步，不要循环了，等待正文出来
+        if (prev >= steps.length - 1) return prev; 
+        return prev + 1;
+      })
+    }, 1500)
     return () => clearInterval(interval)
-  }, [])
+  }, [steps])
+
+  const currentText = steps && steps.length > 0 ? steps[currentStepIndex] : "正在分析意图..."
 
   return (
-    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
+    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500 my-4">
       <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center flex-shrink-0">
         <Sparkles size={16} className="text-blue-500 animate-pulse" />
       </div>
       <div className="bg-white border border-blue-100 rounded-2xl px-5 py-3 shadow-sm flex items-center gap-3">
-        <div className="flex gap-1 h-2 items-center">
-          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce"></div>
+        {/* 动态加载圈 */}
+        <Loader2 size={16} className="text-blue-500 animate-spin" />
+        
+        <div className="flex flex-col">
+           <span className="text-sm text-blue-600 font-medium transition-all duration-300">
+             {currentText}
+           </span>
+           {/* 显示进度条小点 */}
+           <div className="flex gap-1 mt-1">
+             {steps.map((_, idx) => (
+               <div 
+                 key={idx} 
+                 className={`h-1 rounded-full transition-all duration-300 ${idx === currentStepIndex ? 'w-4 bg-blue-500' : 'w-1 bg-blue-200'}`}
+               />
+             ))}
+           </div>
         </div>
-        <span className="text-sm text-blue-600 font-medium min-w-[140px] transition-all duration-300">
-          {steps[step]}
-        </span>
       </div>
     </div>
   )
@@ -83,14 +95,17 @@ export default function Home() {
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  
+  // 🆕 新增：专门存储 AI 的思考步骤
+  const [thinkingSteps, setThinkingSteps] = useState<string[]>([])
+  
   const [model, setModel] = useState("gemini")
   const [balance, setBalance] = useState(99999) 
-  
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, isLoading]) // isLoading 变了也要滚到底部
+  }, [messages, isLoading, thinkingSteps])
 
   useEffect(() => {
     if (!localStorage.getItem("my_ai_user_id")) {
@@ -106,8 +121,25 @@ export default function Home() {
     setMessages(prev => [...prev, userMsg])
     setInput("")
     setIsLoading(true)
+    setThinkingSteps(["正在启动AI大脑..."]) // 初始状态
 
     try {
+      // 🚀 第一步：先呼叫“快脑”，获取针对这个问题的真实计划
+      // 这个请求非常快 (0.5秒左右)
+      fetch('/api/plan', {
+        method: 'POST',
+        body: JSON.stringify({ message: userMsg.content })
+      })
+      .then(res => res.text())
+      .then(text => {
+        // 如果获取成功，比如 "检索天气|分析数据|绘图"，就切割成数组
+        if (text && text.includes('|')) {
+          setThinkingSteps(text.split('|'))
+        }
+      })
+      .catch(err => console.log("快脑偷懒了，使用默认计划"))
+
+      // 🚀 第二步：同时呼叫“慢脑”，获取正文
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,12 +149,9 @@ export default function Home() {
         })
       })
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}))
-        throw new Error(errData.error || "服务器连接失败")
-      }
-
+      if (!response.ok) throw new Error("服务器繁忙")
       if (!response.body) return
+
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       
@@ -144,13 +173,14 @@ export default function Home() {
       }
 
     } catch (error: any) {
-      console.error("发送失败:", error)
-      alert("发送失败: " + error.message)
+      alert("错误: " + error.message)
     } finally {
       setIsLoading(false)
+      setThinkingSteps([]) // 思考结束，清空步骤
     }
   }
 
+  // 充值逻辑保持不变
   const [rechargeCode, setRechargeCode] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const handleRecharge = () => {
@@ -187,7 +217,7 @@ export default function Home() {
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
             <h1 className="font-bold text-gray-700 flex items-center gap-2">
               <Bot size={20} className="text-blue-500"/> 
-              AI 助手
+              AI 助手 (Gemini 3 Pro)
             </h1>
             <Select value={model} onValueChange={setModel}>
               <SelectTrigger className="w-[180px]"><SelectValue /></SelectTrigger>
@@ -231,8 +261,8 @@ export default function Home() {
                </div>
              ))}
 
-             {/* 👇 核心变化在这里：使用了 Thinking 组件 */}
-             {isLoading && <Thinking />}
+             {/* 👇 核心升级：传入真实的 thinkingSteps */}
+             {isLoading && <Thinking steps={thinkingSteps} />}
              
              <div ref={messagesEndRef} />
           </div>
