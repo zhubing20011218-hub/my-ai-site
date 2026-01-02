@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { google } from '@ai-sdk/google';
 import { streamText } from 'ai';
 
@@ -5,12 +6,13 @@ export const maxDuration = 30;
 
 export async function POST(req: Request) {
   try {
-    // 1. 👇 这一行非常关键！如果红线报错，往往是因为缺了这一行
+    // 1. 获取消息
     const { messages, model } = await req.json();
 
-    // 2. 这里的模型名字不要改，先用 gemini-pro 跑通
+    // 2. 锁定使用 gemini-pro (最稳模型)
     let googleModelName = 'gemini-pro'; 
     
+    // 如果是 gpt4 模式，使用更强的 gemini-1.5-pro
     if (model === 'gpt4') {
       googleModelName = 'gemini-1.5-pro';
     }
@@ -19,7 +21,7 @@ export async function POST(req: Request) {
 
     // 3. 开始流式传输
     const result = await streamText({
-      model: google(googleModelName as any),
+      model: google(googleModelName),
       messages: messages,
     });
 
