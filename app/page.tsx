@@ -25,7 +25,6 @@ import { useChat } from "@ai-sdk/react"
 import Link from "next/link"
 import { useState, useEffect } from "react"
 import ReactMarkdown from 'react-markdown'
-import { supabase } from "@/lib/supabase" 
 
 export default function Home() {
   const [model, setModel] = useState("gemini")
@@ -75,10 +74,7 @@ export default function Home() {
       const newBalance = balance + amount
       setBalance(newBalance)
       
-      await supabase
-        .from('profiles')
-        .update({ balance: newBalance })
-        .eq('id', userId)
+      
 
       alert(`✅ 充值成功！余额已更新为 ¥${newBalance}`)
       setRechargeCode("")
@@ -109,7 +105,7 @@ export default function Home() {
 
     const newBalance = Number((balance - cost).toFixed(2)) // 防止小数精度问题
     setBalance(newBalance)
-    await supabase.from('profiles').update({ balance: newBalance }).eq('id', userId)
+    
 
     if (model === 'sora') {
       alert(`💸 扣费成功！(演示模式: Sora暂未接入真实API)`)
