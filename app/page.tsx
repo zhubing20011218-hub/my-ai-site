@@ -66,9 +66,9 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [升级] 认证组件 (新增：忘记密码 & 5次错误锁定) ---
+// --- 3. [保留] 认证组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
-  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); // ✨ 模式切换
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState(""); 
@@ -83,7 +83,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
   
-  // ✨ 5次错误计数器
   const [failCount, setFailCount] = useState(0); 
 
   const validateAccount = (val: string) => {
@@ -110,7 +109,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     e.preventDefault();
     setError("");
     
-    // 基础非空检查
     if (!account) { setError("请输入账号"); return; }
     if (authMode !== 'login' && !validateAccount(account)) { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
@@ -125,7 +123,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     
     setLoading(true);
     
-    // 构造请求类型
     let type = 'login';
     if (authMode === 'register') type = 'register';
     if (authMode === 'forgot') type = 'reset-password';
@@ -139,7 +136,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       const data = await res.json();
       
       if (!res.ok) {
-        // ✨ 如果是登录失败，增加错误计数
         if (type === 'login') {
           const newCount = failCount + 1;
           setFailCount(newCount);
@@ -147,7 +143,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
             alert("您已连续输错5次密码，为保护账号安全，系统将引导您重置密码。");
             setAuthMode('forgot');
             setError("请验证身份以重置密码");
-            setFailCount(0); // 重置计数
+            setFailCount(0); 
             setLoading(false);
             return;
           }
@@ -174,7 +170,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     }
   };
 
-  // 标题和副标题逻辑
   let title = "欢迎回来";
   let subtitle = "使用您的 Eureka 账号登录";
   if (authMode === 'register') { title = "创建新账户"; subtitle = "开启您的 AI 探索之旅"; }
@@ -208,7 +203,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
             </div>
           )}
 
-          {/* ✨ 忘记密码入口 (仅登录模式显示) */}
           {authMode === 'login' && (
             <div className="flex justify-end mt-1">
               <button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button>
@@ -297,8 +291,17 @@ export default function Home() {
   };
 
   const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
+  
+  // ✨ 核心修复：Admin 特权通道
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
     if(!user) return false;
+    
+    // 👑 特权：如果是 admin，直接放行，不走数据库，不扣费
+    if (user.role === 'admin') {
+      console.log("Admin 权限：免扣费通行");
+      return true;
+    }
+
     const cur = parseFloat(user.balance);
     if(type === 'consume' && cur < amount) { alert("余额不足"); return false; }
     try {
@@ -319,6 +322,8 @@ export default function Home() {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
+    
+    // 执行扣费检查（Admin 会直接返回 true）
     const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
 
