@@ -4,82 +4,66 @@ import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
 export async function POST(req: Request) {
   try {
-    const { messages, model } = await req.json();
+    // 1. 检查 API Key 是否存在
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "服务器未配置 API Key" }, { status: 500 });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // 🚀 强制指定模型：gemini-1.5-flash
+    // 这是目前 Google 官方主推、速度最快、且 100% 支持文件的版本
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const { messages } = await req.json();
     const lastMsg = messages[messages.length - 1];
     let prompt = "";
     let imageParts: any[] = [];
 
-    // --- 1. 解析内容 (保持不变) ---
+    // --- 2. 解析内容 ---
     if (typeof lastMsg.content === 'string') {
       prompt = lastMsg.content;
     } else if (typeof lastMsg.content === 'object') {
       prompt = lastMsg.content.text || "";
+      
+      // 处理图片
       if (lastMsg.content.images?.length > 0) {
         imageParts = lastMsg.content.images.map((img: string) => ({
           inlineData: { data: img.split(',')[1], mimeType: "image/jpeg" }
         }));
       }
+
+      // 处理 Excel 文件
       if (lastMsg.content.file) {
         const file = lastMsg.content.file;
-        const fileName = file.name.toLowerCase();
-        if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
+        console.log("正在解析文件:", file.name); // 调试日志
+
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.csv')) {
           try {
             const base64Data = file.content.split(',')[1];
             const workbook = XLSX.read(base64Data, { type: 'base64' });
-            const csvData = XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
-            prompt += `\n\n【附件数据】\n文件名: ${file.name}\n\`\`\`csv\n${csvData}\n\`\`\`\n`;
-          } catch (err) { console.error("表格解析失败", err); }
-        } else if (fileName.endsWith('.txt') || fileName.endsWith('.md') || fileName.endsWith('.js') || fileName.endsWith('.py')) {
-           const textData = Buffer.from(file.content.split(',')[1], 'base64').toString('utf-8');
-           prompt += `\n\n【附件内容】\n${textData}\n`;
+            const sheetName = workbook.SheetNames[0];
+            const csvData = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
+            prompt += `\n\n【附件表格数据】\n文件名: ${file.name}\n\`\`\`csv\n${csvData}\n\`\`\`\n`;
+          } catch (e) {
+            console.error("解析失败:", e);
+          }
         }
       }
     }
 
-    // --- 2. 🚀 核心修复：自动重试机制 (Auto-Fallback) ---
-    // Google 的模型名字经常变，我们准备一个列表，挨个试，哪个能用就用哪个。
-    // 优先用 flash-001 (全名), 失败了试 pro-001, 再失败试 gemini-pro (旧版保底)
-    const candidateModels = model === 'Gemini 3 Pro' 
-      ? ["gemini-1.5-flash-001", "gemini-1.5-pro-001", "gemini-pro"] 
-      : ["gemini-pro"];
+    // --- 3. 发送请求 ---
+    console.log("正在请求 Google API (gemini-1.5-flash)...");
+    
+    const result = await model.generateContentStream([prompt, ...imageParts]);
 
-    let finalResult = null;
-    let usedModel = "";
-
-    // 循环尝试模型
-    for (const modelName of candidateModels) {
-      try {
-        console.log(`正在尝试模型: ${modelName}...`);
-        const geminiModel = genAI.getGenerativeModel({ model: modelName });
-        
-        if (imageParts.length > 0) {
-          finalResult = await geminiModel.generateContentStream([prompt, ...imageParts]);
-        } else {
-          finalResult = await geminiModel.generateContentStream(prompt);
-        }
-        
-        usedModel = modelName;
-        console.log(`✅ 模型 ${modelName} 调用成功！`);
-        break; // 成功了就跳出循环
-      } catch (e: any) {
-        console.warn(`❌ 模型 ${modelName} 失败: ${e.message}`);
-        // 如果是最后一个模型也失败了，那就真的报错了
-        if (modelName === candidateModels[candidateModels.length - 1]) {
-          throw e;
-        }
-        // 否则继续下一次循环，尝试下一个备胎
-      }
-    }
-
-    // --- 3. 返回流 ---
+    // --- 4. 返回流 ---
     const stream = new ReadableStream({
       async start(controller) {
-        // @ts-ignore
-        for await (const chunk of finalResult.stream) {
+        for await (const chunk of result.stream) {
           const chunkText = chunk.text();
           if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
         }
@@ -90,8 +74,10 @@ export async function POST(req: Request) {
     return new NextResponse(stream);
 
   } catch (error: any) {
-    console.error("Chat Error:", error);
-    // 把详细错误吐给前端，方便截图
-    return NextResponse.json({ error: `AI服务暂不可用 (${error.message})` }, { status: 500 });
+    console.error("Chat Error Details:", error);
+    // 把最真实的错误返回给前端，不要包装
+    return NextResponse.json({ 
+      error: `AI请求失败: ${error.message}` 
+    }, { status: 500 });
   }
 }
