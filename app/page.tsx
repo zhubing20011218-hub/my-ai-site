@@ -65,41 +65,66 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [升级] 企业级安全认证组件 (已修复第174行) ---
+// --- 3. [升级] 企业级安全认证组件 (含双次密码校验 + 模拟真实验证码逻辑) ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState(""); // 新增：确认密码
   const [nickname, setNickname] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
   const [realCode, setRealCode] = useState("");
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [codeLoading, setCodeLoading] = useState(false); // 验证码发送中状态
   const [showPwd, setShowPwd] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
 
+  // 模拟发送验证码 (此处预留接入短信API的位置)
   const sendCode = () => {
     if(!account.includes("@") && account.length < 11) { setError("请输入有效的手机号或邮箱"); return; }
     setError("");
-    const c = Math.floor(100000+Math.random()*900000).toString();
-    setRealCode(c); setCount(60); alert(`【Eureka安全中心】验证码: ${c}`);
-    const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
+    setCodeLoading(true);
+
+    // 模拟网络延迟，显得更真实
+    setTimeout(() => {
+      setCodeLoading(false);
+      // --- 真实场景：这里会调用 await fetch('/api/send-sms', { phone: account }) ---
+      const c = Math.floor(100000+Math.random()*900000).toString();
+      setRealCode(c); 
+      setCount(60); 
+      
+      // 这里的 alert 是为了在没有真实短信后台时让您能测试流程。
+      // 如果您接入了阿里云短信，这里就不需要 alert，而是用户手机直接收到短信。
+      alert(`【系统提示】由于未接入真实短信商，您的测试验证码是: ${c}`);
+      
+      const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
+    }, 1500);
   };
 
   const handleAuth = (e: any) => {
     e.preventDefault();
-    if (isReg && !agreed) { setError("请先阅读并同意服务条款"); return; }
+    setError("");
+    
+    if (isReg) {
+      if (!agreed) { setError("请先阅读并同意服务条款"); return; }
+      if (!nickname) { setError("请输入昵称"); return; }
+      if (password !== confirmPassword) { setError("两次输入的密码不一致"); return; }
+      if (verifyCode !== realCode) { setError("验证码错误"); return; }
+    }
+    
     if (!account || !password) { setError("账号和密码不能为空"); return; }
     if (isReg && password.length < 6) { setError("密码长度不能少于6位"); return; }
-    setError(""); setLoading(true);
+    
+    setLoading(true);
     setTimeout(() => {
       setLoading(false);
       if (isReg) {
-        if (verifyCode !== realCode) { setError("验证码错误"); return; }
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
         if (db.find((u:any)=>u.account===account)) { setError("该账号已存在"); return; }
-        const u = { id: "u_"+Date.now(), nickname: nickname || "新用户", account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
+        
+        const u = { id: "u_"+Date.now(), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
         db.push(u); localStorage.setItem("my_ai_users_db", JSON.stringify(db));
         localStorage.setItem("my_ai_user", JSON.stringify(u)); 
         onLogin(u);
@@ -118,15 +143,28 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px] animate-in zoom-in-95 duration-500">
         <div className="text-left mb-6"><h2 className="text-2xl font-black text-slate-900">{isReg ? "创建新账户" : "欢迎回来"}</h2><p className="text-xs text-slate-400 mt-1">{isReg ? "开启您的 AI 探索之旅" : "使用您的 Eureka 账号登录"}</p></div>
         <form onSubmit={handleAuth} className="space-y-4 text-left">
-          {isReg && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="您的昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
-          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
-          {isReg && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-12 w-24 rounded-2xl border-slate-200 text-slate-600 font-bold">{count>0 ? `${count}s` : "获取"}</Button></div>)}
-          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder="密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
           
-          {/* ✨ 修复点：这里是您之前截图报错的地方，我已经将其写成了一行，确保不会断裂 */}
+          {/* 昵称输入 (仅注册) */}
+          {isReg && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
+          
+          {/* 账号输入 */}
+          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号或邮箱" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
+          
+          {/* 验证码 (仅注册) */}
+          {isReg && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
+          
+          {/* 密码 */}
+          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder="设置密码 (6位以上)" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
+          
+          {/* 确认密码 (仅注册) */}
+          {isReg && (<div className="relative group animate-in slide-in-from-top-2"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type="password" placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /></div>)}
+
+          {/* 错误提示 - 已修复换行截断问题 */}
           {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
 
-          {isReg && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
+          {/* 协议 */}
+          {isReg && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《用户协议》</span> 和 <span className="text-blue-600 cursor-pointer hover:underline">《隐私政策》</span></span></div>)}
+          
           <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (isReg ? "立即注册" : "安全登录")}</Button>
         </form>
         <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
@@ -264,7 +302,6 @@ export default function Home() {
                       <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800 text-slate-900">
                         <ReactMarkdown>{typeof m.content === 'string' ? m.content.split("___RELATED___")[0] : m.content.text}</ReactMarkdown>
                       </div>
-                      {/* [保留功能] 相关指令胶囊 */}
                       {m.role === 'assistant' && !isLoading && typeof m.content === 'string' && (
                         <RelatedQuestions content={m.content} onAsk={(q) => handleSend(null, q)} />
                       )}
