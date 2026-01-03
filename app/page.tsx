@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
   Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar, MessageCircle, RefreshCw
+  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar, MessageCircle, RefreshCw, Server
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -420,12 +420,16 @@ export default function Home() {
                 </div>
               ))}
            </div>
+           {/* ✨ 调试信息: 显示当前连接的服务器 */}
+           <div className="mt-4 pt-2 border-t border-white/5 flex items-center gap-2 text-[9px] text-slate-500">
+             <Server size={10}/> Env: {typeof window !== 'undefined' ? window.location.hostname : 'Server'}
+           </div>
         </div>
       )}
 
-      {/* Admin Cards Dialog - ✨ 手机适配版 */}
+      {/* Admin Cards Dialog - ✨ 修复右上角按钮重叠 */}
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
-        <DialogHeader className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader>
+        <DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader>
         <div className="p-6 space-y-6">
           <div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
             <div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div>
@@ -434,13 +438,11 @@ export default function Home() {
             <Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button>
           </div>
           <div className="max-h-[400px] overflow-y-auto space-y-2 pr-1">
-             {/* 手机只显示2列，电脑显示5列 */}
              <div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>
              {cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
                 <div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div>
                 <div className="flex items-center gap-2">
                    <span>${c.amount}</span>
-                   {/* 手机端把状态显示在这里 */}
                    <span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span>
                 </div>
                 <div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div>
@@ -452,13 +454,12 @@ export default function Home() {
         </div>
       </DialogContent></Dialog>
 
-      {/* Admin Support Dialog - ✨ 手机适配版 */}
+      {/* Admin Support Dialog - ✨ 修复右上角按钮重叠 */}
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
-         {/* 手机端改为上下布局 (flex-col)，电脑端左右 (md:flex-row) */}
          <div className="flex flex-col md:flex-row h-[600px]">
-           {/* 左侧列表：手机端高度150px，电脑端高度100% */}
            <div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-             <h3 className="font-black text-sm mb-4 flex items-center justify-between"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3>
+             {/* 增加 mr-8 防止与关闭按钮重叠 */}
+             <h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3>
              <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">
                {supportSessions.map(s => (
                  <div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}>
@@ -469,7 +470,6 @@ export default function Home() {
                {supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}
              </div>
            </div>
-           {/* 右侧/下方聊天区域 */}
            <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">
              {activeSessionUser ? (<>
                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
