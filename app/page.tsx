@@ -9,13 +9,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
   Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun
+  Moon, Sun, FileText
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
+// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. [保留] 独立组件 ---
+// --- 1. [保留] 独立组件：安全渲染相关指令 ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
@@ -40,7 +41,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
-// --- 2. [保留] 思维链 ---
+// --- 2. [保留] 思维链组件 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -66,7 +67,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [核心修改] 修复注册漏洞 & 允许Admin登录 ---
+// --- 3. [保留] 企业级安全认证组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
@@ -84,7 +85,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [error, setError] = useState("");
 
   const validateAccount = (val: string) => {
-    // ✨ 特例：允许 admin 通过校验，方便登录
     if (val === 'admin') return true; 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^1[3-9]\d{9}$/; 
@@ -107,16 +107,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const handleAuth = async (e: any) => {
     e.preventDefault();
     setError("");
-    
-    // 基础非空检查
     if (!account) { setError("请输入账号"); return; }
-    
-    // ✨ 核心修复：注册时严禁输入 admin，彻底堵死漏洞
-    if (isReg && account.toLowerCase() === 'admin') { 
-      setError("管理员账号不可注册"); 
-      return; 
-    }
-
+    if (isReg && account.toLowerCase() === 'admin') { setError("管理员账号不可注册"); return; }
     if (!validateAccount(account)) { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
 
@@ -129,28 +121,17 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     }
     
     setLoading(true);
-    
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          type: isReg ? 'register' : 'login',
-          account, password, nickname 
-        })
+        body: JSON.stringify({ type: isReg ? 'register' : 'login', account, password, nickname })
       });
       const data = await res.json();
-      
       if (!res.ok) throw new Error(data.error || "请求失败");
-      
       localStorage.setItem("my_ai_user", JSON.stringify(data));
       onLogin(data);
-
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
   return (
@@ -178,7 +159,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// --- 4. 主程序 ---
+// --- 4. 主程序 (升级：详细记录 + 管理员查账) ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -196,7 +177,8 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
-  const [adminUsers, setAdminUsers] = useState<any[]>([]); 
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [adminUserTx, setAdminUserTx] = useState<any[]>([]); // ✨ 新增：管理员查看的专属流水状态
 
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
@@ -217,6 +199,19 @@ export default function Home() {
         setAdminUsers(data.users);
       }
     } catch (e) { console.error("Sync error:", e); }
+  };
+
+  // ✨ 新增：管理员点击查看用户详情
+  const openAdminDetail = async (targetUser: any) => {
+    setSelectedAdminUser(targetUser);
+    setAdminUserTx([]); // 先清空，防止显示上一个人的
+    try {
+      const res = await fetch(`/api/sync?id=${targetUser.id}`); // 复用接口查该用户流水
+      const data = await res.json();
+      if (data.transactions) {
+        setAdminUserTx(data.transactions);
+      }
+    } catch (e) { alert("获取详情失败"); }
   };
 
   const toggleTheme = () => {
@@ -248,7 +243,9 @@ export default function Home() {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
-    const success = await handleTX('consume', 0.01, "AI 服务资源调用");
+    
+    // ✨ 核心修改：记录具体的模型名称到数据库
+    const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
 
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
@@ -317,7 +314,14 @@ export default function Home() {
         <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
            <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
            <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-              {adminUsers.map((u:any)=>(<div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}><div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div><div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div></div>))}
+              {adminUsers.map((u:any)=>(
+                <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
+                  <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
+                  <div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div>
+                  {/* ✨ 新增：详情按钮 */}
+                  <Button onClick={() => openAdminDetail(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">使用详情</Button>
+                </div>
+              ))}
            </div>
         </div>
       )}
@@ -368,7 +372,19 @@ export default function Home() {
       </div>
 
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={()=>{ const val = (document.getElementById('card-input') as HTMLInputElement).value; if(val.toUpperCase()==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功！"); } else alert("无效"); }} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
-      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(JSON.parse(localStorage.getItem(`tx_${selectedAdminUser.id}`) || "[]")).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col"><span className="text-xs font-bold">{tx.description}</span><span className="text-[10px] opacity-60 font-mono">{tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}</div>}</DialogContent></Dialog>
+      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">
+        {/* ✨ 管理员查看模式：显示从云端拉取的该用户流水 */}
+        {(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (
+          <div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-bold">{tx.description}</span>
+              <span className="text-[10px] opacity-60 font-mono flex items-center gap-1"><FileText size={10}/> {tx.time}</span>
+            </div>
+            <span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span>
+          </div>
+        ))}
+        {adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}
+      </div>}</DialogContent></Dialog>
     </div>
   );
 }
