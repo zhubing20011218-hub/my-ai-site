@@ -9,14 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
   Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText
+  Moon, Sun, FileText, ArrowLeft
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. [保留] 独立组件：安全渲染相关指令 ---
+// --- 1. [保留] 独立组件 ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
@@ -41,7 +40,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
-// --- 2. [保留] 思维链组件 ---
+// --- 2. [保留] 思维链 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -67,9 +66,9 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [保留] 企业级安全认证组件 ---
+// --- 3. [升级] 认证组件 (新增：忘记密码 & 5次错误锁定) ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
-  const [isReg, setIsReg] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); // ✨ 模式切换
   const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState(""); 
@@ -83,6 +82,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
+  
+  // ✨ 5次错误计数器
+  const [failCount, setFailCount] = useState(0); 
 
   const validateAccount = (val: string) => {
     if (val === 'admin') return true; 
@@ -107,59 +109,134 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const handleAuth = async (e: any) => {
     e.preventDefault();
     setError("");
+    
+    // 基础非空检查
     if (!account) { setError("请输入账号"); return; }
-    if (isReg && account.toLowerCase() === 'admin') { setError("管理员账号不可注册"); return; }
-    if (!validateAccount(account)) { setError("账号格式不正确"); return; }
+    if (authMode !== 'login' && !validateAccount(account)) { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
 
-    if (isReg) {
-      if (!agreed) { setError("请先阅读并同意服务条款"); return; }
-      if (!nickname) { setError("请输入昵称"); return; }
+    if (authMode === 'register' || authMode === 'forgot') {
+      if (authMode === 'register' && !nickname) { setError("请输入昵称"); return; }
       if (password.length < 6) { setError("密码长度不能少于6位"); return; }
       if (password !== confirmPassword) { setError("两次输入的密码不一致"); return; }
       if (verifyCode !== realCode) { setError("验证码错误"); return; }
+      if (authMode === 'register' && !agreed) { setError("请先阅读并同意服务条款"); return; }
     }
     
     setLoading(true);
+    
+    // 构造请求类型
+    let type = 'login';
+    if (authMode === 'register') type = 'register';
+    if (authMode === 'forgot') type = 'reset-password';
+
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: isReg ? 'register' : 'login', account, password, nickname })
+        body: JSON.stringify({ type, account, password, nickname })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "请求失败");
+      
+      if (!res.ok) {
+        // ✨ 如果是登录失败，增加错误计数
+        if (type === 'login') {
+          const newCount = failCount + 1;
+          setFailCount(newCount);
+          if (newCount >= 5) {
+            alert("您已连续输错5次密码，为保护账号安全，系统将引导您重置密码。");
+            setAuthMode('forgot');
+            setError("请验证身份以重置密码");
+            setFailCount(0); // 重置计数
+            setLoading(false);
+            return;
+          }
+        }
+        throw new Error(data.error || "请求失败");
+      }
+      
+      if (authMode === 'forgot') {
+        alert("密码重置成功！请使用新密码登录。");
+        setAuthMode('login');
+        setPassword("");
+        setConfirmPassword("");
+        setLoading(false);
+        return;
+      }
+
       localStorage.setItem("my_ai_user", JSON.stringify(data));
       onLogin(data);
-    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // 标题和副标题逻辑
+  let title = "欢迎回来";
+  let subtitle = "使用您的 Eureka 账号登录";
+  if (authMode === 'register') { title = "创建新账户"; subtitle = "开启您的 AI 探索之旅"; }
+  if (authMode === 'forgot') { title = "找回密码"; subtitle = "验证您的身份以重置密码"; }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
       <div className="flex items-center gap-3 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
       <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px] animate-in zoom-in-95 duration-500">
-        <div className="text-left mb-6"><h2 className="text-2xl font-black text-slate-900">{isReg ? "创建新账户" : "欢迎回来"}</h2><p className="text-xs text-slate-400 mt-1">{isReg ? "开启您的 AI 探索之旅" : "使用您的 Eureka 账号登录"}</p></div>
-        <form onSubmit={handleAuth} className="space-y-4 text-left">
-          {isReg && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
-          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号或邮箱" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
-          {isReg && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
-          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder={isReg ? "设置密码 (6位以上)" : "请输入密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
-          {isReg && (<div className="relative group animate-in slide-in-from-top-2"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
-          {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
-          {isReg && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
-          <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (isReg ? "立即注册" : "安全登录")}</Button>
-        </form>
-        <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
-          {isReg && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送 $0.10 体验金！</span></div>)}
-          <button onClick={()=>{setIsReg(!isReg); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{isReg ? "已有账号？去登录" : "没有账号？免费注册"}</button>
+        <div className="text-left mb-6">
+          {authMode === 'forgot' && <button onClick={()=>setAuthMode('login')} className="mb-2 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-xs font-bold"><ArrowLeft size={12}/> 返回登录</button>}
+          <h2 className="text-2xl font-black text-slate-900">{title}</h2>
+          <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
         </div>
+        <form onSubmit={handleAuth} className="space-y-4 text-left">
+          {authMode === 'register' && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
+          
+          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号或邮箱" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
+          
+          {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
+          
+          <div className="relative group">
+            <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
+            <Input type={showPwd ? "text" : "password"} placeholder={authMode === 'login' ? "请输入密码" : "设置新密码 (6位以上)"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
+          </div>
+          
+          {(authMode === 'register' || authMode === 'forgot') && (
+            <div className="relative group animate-in slide-in-from-top-2">
+              <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
+              <Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
+            </div>
+          )}
+
+          {/* ✨ 忘记密码入口 (仅登录模式显示) */}
+          {authMode === 'login' && (
+            <div className="flex justify-end mt-1">
+              <button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button>
+            </div>
+          )}
+
+          {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
+          
+          {authMode === 'register' && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
+          
+          <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>
+            {loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? "安全登录" : (authMode === 'register' ? "立即注册" : "重置密码"))}
+          </Button>
+        </form>
+        
+        {authMode !== 'forgot' && (
+          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
+            {authMode === 'register' && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送 $0.10 体验金！</span></div>)}
+            <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login'); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{authMode === 'login' ? "没有账号？免费注册" : "已有账号？去登录"}</button>
+          </div>
+        )}
       </Card>
       <p className="mt-8 text-[10px] text-slate-300 font-mono">Eureka Secure Auth System © 2026</p>
     </div>
   );
 }
 
-// --- 4. 主程序 (升级：详细记录 + 管理员查账) ---
+// --- 4. 主程序 ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -178,7 +255,7 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
-  const [adminUserTx, setAdminUserTx] = useState<any[]>([]); // ✨ 新增：管理员查看的专属流水状态
+  const [adminUserTx, setAdminUserTx] = useState<any[]>([]); 
 
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
@@ -201,12 +278,11 @@ export default function Home() {
     } catch (e) { console.error("Sync error:", e); }
   };
 
-  // ✨ 新增：管理员点击查看用户详情
   const openAdminDetail = async (targetUser: any) => {
     setSelectedAdminUser(targetUser);
-    setAdminUserTx([]); // 先清空，防止显示上一个人的
+    setAdminUserTx([]); 
     try {
-      const res = await fetch(`/api/sync?id=${targetUser.id}`); // 复用接口查该用户流水
+      const res = await fetch(`/api/sync?id=${targetUser.id}`); 
       const data = await res.json();
       if (data.transactions) {
         setAdminUserTx(data.transactions);
@@ -243,8 +319,6 @@ export default function Home() {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
-    
-    // ✨ 核心修改：记录具体的模型名称到数据库
     const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
 
@@ -318,7 +392,6 @@ export default function Home() {
                 <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
                   <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
                   <div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div>
-                  {/* ✨ 新增：详情按钮 */}
                   <Button onClick={() => openAdminDetail(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">使用详情</Button>
                 </div>
               ))}
@@ -373,7 +446,6 @@ export default function Home() {
 
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={()=>{ const val = (document.getElementById('card-input') as HTMLInputElement).value; if(val.toUpperCase()==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功！"); } else alert("无效"); }} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
       <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">
-        {/* ✨ 管理员查看模式：显示从云端拉取的该用户流水 */}
         {(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (
           <div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
             <div className="flex flex-col gap-1">
