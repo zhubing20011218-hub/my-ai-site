@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const lastMsg = messages[messages.length - 1];
     
-    // --- 1. 简单粗暴的数据组装 ---
+    // --- 1. 组装用户内容 ---
     let parts: any[] = [];
 
     if (typeof lastMsg.content === 'string') {
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       const text = lastMsg.content.text || "";
       if (text) parts.push({ text: text });
 
-      // 图片
+      // 图片处理
       if (lastMsg.content.images?.length > 0) {
         lastMsg.content.images.forEach((img: string) => {
           parts.push({
@@ -32,10 +32,10 @@ export async function POST(req: Request) {
         });
       }
 
-      // Excel 文件
+      // Excel/文件处理
       if (lastMsg.content.file) {
         const file = lastMsg.content.file;
-        console.log("正在处理文件:", file.name);
+        console.log("处理文件:", file.name);
         try {
           if (file.name.match(/\.(xlsx|xls|csv)$/i)) {
             const workbook = XLSX.read(file.content.split(',')[1], { type: 'base64' });
@@ -46,26 +46,43 @@ export async function POST(req: Request) {
              const textData = Buffer.from(file.content.split(',')[1], 'base64').toString('utf-8');
              parts.push({ text: `\n\n【文件内容】\n${textData.slice(0, 15000)}` });
           }
-        } catch (e) {
-           console.error("文件解析失败", e);
-        }
+        } catch (e) { console.error(e); }
       }
     }
 
-    // --- 2. 这里的改动是关键 ---
-    // 我们直接用您的诊断列表里出现的 "gemini-2.0-flash-exp"
-    // 这个模型是 Google 目前最新的实验版，通常没有区域限制，且支持所有功能
+    // --- 2. ✨ 核心修复：加回“系统指令” (System Instruction) ---
+    // 这段话告诉 AI：回答完之后，必须生成 ___RELATED___ 分隔的建议
+    const systemInstructionText = `
+    你是一个智能助手。
+    请正常回答用户的问题。
+    
+    【重要规则】
+    在回答的最后，你必须生成 3 个与当前话题相关的简短追问建议。
+    格式必须严格如下（不要加序号，用 | 分隔）：
+    
+    ___RELATED___建议问题1?|建议问题2?|建议问题3?
+    
+    例如：
+    上海今天天气不错。
+    ___RELATED___明天天气怎么样？|推荐去哪里玩？|要注意防晒吗？
+    `;
+
+    // --- 3. 发起请求 ---
+    // 继续使用 gemini-2.0-flash-exp，因为它又快又聪明
     const modelName = "gemini-2.0-flash-exp"; 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
-    console.log(`正在直连 Google (${modelName})...`);
+    console.log(`请求 Google API (${modelName}) + 胶囊建议...`);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: parts }],
-        // 安全设置全开，防止误杀
+        // 这里把系统指令传给 API
+        system_instruction: {
+          parts: [{ text: systemInstructionText }]
+        },
         safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -77,20 +94,15 @@ export async function POST(req: Request) {
 
     const data = await response.json();
 
-    // --- 3. 错误处理 ---
     if (!response.ok) {
-      console.error("Google API Error:", data);
-      // 如果 2.0 也不行，我们绝望地试一下 1.5-flash
-      if (response.status === 404) {
-         return NextResponse.json({ error: `模型 ${modelName} 连接失败 (404)，请检查 API Key 权限` }, { status: 404 });
-      }
-      return NextResponse.json({ error: data.error?.message || "Google API 报错" }, { status: 500 });
+      console.error("API Error:", data);
+      throw new Error(data.error?.message || "Google API Error");
     }
 
-    // --- 4. 成功返回 ---
-    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "AI 无言以对";
+    // --- 4. 返回结果 ---
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // 伪装成流式返回，让前端开心
+    // 伪装流式返回
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
