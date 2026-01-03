@@ -61,9 +61,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- 🚀 关键修改点：使用稳定的模型名称 ---
-    // 之前报错是因为用了 'gemini-1.5-pro-latest'，现在改为 'gemini-1.5-pro'
-    const targetModel = model === 'Gemini 3 Pro' ? 'gemini-1.5-pro' : 'gemini-pro';
+    // --- 🚀 关键修改点：换成 Flash 模型 (防404) ---
+    // gemini-1.5-flash 是目前最稳定且开放的版本，同样支持 Excel 长文本
+    const targetModel = model === 'Gemini 3 Pro' ? 'gemini-1.5-flash' : 'gemini-pro';
+    
+    console.log(`正在请求模型: ${targetModel}`); // 加个日志方便排查
     const geminiModel = genAI.getGenerativeModel({ model: targetModel });
 
     let result;
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("Chat Error:", error);
-    // 这里把具体报错返回给前端，方便您调试
+    // 返回更详细的错误给前端
     return NextResponse.json({ error: error.message || "AI 服务异常" }, { status: 500 });
   }
 }
