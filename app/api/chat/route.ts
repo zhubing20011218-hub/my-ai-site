@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const lastMsg = messages[messages.length - 1];
     
-    // --- 1. 组装用户内容 ---
+    // --- 1. 数据组装 ---
     let parts: any[] = [];
 
     if (typeof lastMsg.content === 'string') {
@@ -20,7 +20,6 @@ export async function POST(req: Request) {
       const text = lastMsg.content.text || "";
       if (text) parts.push({ text: text });
 
-      // 图片处理
       if (lastMsg.content.images?.length > 0) {
         lastMsg.content.images.forEach((img: string) => {
           parts.push({
@@ -32,10 +31,8 @@ export async function POST(req: Request) {
         });
       }
 
-      // Excel/文件处理
       if (lastMsg.content.file) {
         const file = lastMsg.content.file;
-        console.log("处理文件:", file.name);
         try {
           if (file.name.match(/\.(xlsx|xls|csv)$/i)) {
             const workbook = XLSX.read(file.content.split(',')[1], { type: 'base64' });
@@ -50,39 +47,45 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- 2. ✨ 核心修复：加回“系统指令” (System Instruction) ---
-    // 这段话告诉 AI：回答完之后，必须生成 ___RELATED___ 分隔的建议
+    // --- 2. ✨✨✨ 注入“有趣灵魂” (System Instruction) ✨✨✨
     const systemInstructionText = `
-    你是一个智能助手。
-    请正常回答用户的问题。
+    你叫 Eureka，不是冷冰冰的 AI，而是一个说话风趣、高情商、办事利索的数字伙伴。
     
-    【重要规则】
-    在回答的最后，你必须生成 3 个与当前话题相关的简短追问建议。
-    格式必须严格如下（不要加序号，用 | 分隔）：
+    【你的性格设定】
+    1. **拒绝废话**：不要说“作为各种语言模型...”、“我无法访问实时互联网...”。如果用户问天气，虽然你不能联网，但你要根据历史气候数据，给出一个**“基于往年同期大数据的模拟预测”**，并明确标注这不仅是预测。
+    2. **人情味**：使用更口语化的表达，适当使用 Emoji (😄, 🤔, 🌤️)。像朋友一样聊天，而不是像客服一样回答。
+    3. **办事给力**：用户传表格时，直接给出核心洞察，不要罗列数据。用户问代码时，直接给优化后的代码。
     
-    ___RELATED___建议问题1?|建议问题2?|建议问题3?
-    
+    【关于天气问题的特殊处理】
+    如果用户问未来天气，**绝对不要**只说“我不知道”。
+    你要这样回答：“虽然我还没连上气象局的卫星📡，但根据上海往年的气候大数据，下周大概率是这样的...”
+    然后列出一份**模拟**的天气表（标注：历史数据推演），例如：
+    * 周一：🌤️ 多云转晴，22°C (适合晨跑)
+    * 周二：🌧️ 小雨，19°C (记得带伞)
+    ...
+    (最后加一句贴心的穿衣建议)
+
+    【强制格式要求】
+    在回答的最后（无论什么话题），必须生成 3 个相关的追问建议，用 ___RELATED___ 开头，竖线 | 分隔。
     例如：
-    上海今天天气不错。
-    ___RELATED___明天天气怎么样？|推荐去哪里玩？|要注意防晒吗？
+    ...这里是你的回答...
+    ___RELATED___建议1?|建议2?|建议3?
     `;
 
     // --- 3. 发起请求 ---
-    // 继续使用 gemini-2.0-flash-exp，因为它又快又聪明
     const modelName = "gemini-2.0-flash-exp"; 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-    console.log(`请求 Google API (${modelName}) + 胶囊建议...`);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: parts }],
-        // 这里把系统指令传给 API
+        // 注入灵魂
         system_instruction: {
           parts: [{ text: systemInstructionText }]
         },
+        // 安全全开，防止因为过于活泼被拦截
         safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -95,14 +98,12 @@ export async function POST(req: Request) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("API Error:", data);
       throw new Error(data.error?.message || "Google API Error");
     }
 
-    // --- 4. 返回结果 ---
     const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // 伪装流式返回
+    // 伪装流式
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
