@@ -337,19 +337,36 @@ export default function Home() {
     } catch (e) { alert("网络错误"); return false; }
   };
 
+  // ✨✨✨ 核心修改点：发送逻辑升级 (支持 Excel/CSV) ✨✨✨
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
+    
     const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
+
+    // 1. 本地 UI 显示
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
     setMessages(prev => [...prev, uiMsg]);
     setInput(""); setImages([]); setFile(null); 
     setIsLoading(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
+
+    // 2. 准备发送给 API 的数据
+    // 注意：历史记录只带文本，防止 Token 爆炸
     const apiMessages = messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.text }));
-    apiMessages.push({ role: 'user', content: content });
+    
+    // 3. 将当前这条包含文件/图片/文字的完整信息加入队列
+    apiMessages.push({ 
+      role: 'user', 
+      content: { 
+        text: content, 
+        images: [...images], 
+        file: file // 这里包含 { name, content(base64) }，后端需要它来解析 Excel
+      } 
+    });
+
     setTimeout(async () => {
       try {
         const response = await fetch('/api/chat', {
@@ -369,7 +386,7 @@ export default function Home() {
         }
       } catch (err: any) { if(err.name !== 'AbortError') console.error(err); } 
       finally { setIsLoading(false); abortRef.current = null; }
-    }, 7000); 
+    }, 1000); 
   };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
@@ -420,14 +437,14 @@ export default function Home() {
                 </div>
               ))}
            </div>
-           {/* ✨ 调试信息: 显示当前连接的服务器 */}
+           {/* ✨ 调试信息 */}
            <div className="mt-4 pt-2 border-t border-white/5 flex items-center gap-2 text-[9px] text-slate-500">
              <Server size={10}/> Env: {typeof window !== 'undefined' ? window.location.hostname : 'Server'}
            </div>
         </div>
       )}
 
-      {/* Admin Cards Dialog - ✨ 修复右上角按钮重叠 */}
+      {/* Admin Cards Dialog */}
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
         <DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader>
         <div className="p-6 space-y-6">
@@ -454,11 +471,10 @@ export default function Home() {
         </div>
       </DialogContent></Dialog>
 
-      {/* Admin Support Dialog - ✨ 修复右上角按钮重叠 */}
+      {/* Admin Support Dialog */}
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
          <div className="flex flex-col md:flex-row h-[600px]">
            <div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-             {/* 增加 mr-8 防止与关闭按钮重叠 */}
              <h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3>
              <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">
                {supportSessions.map(s => (
@@ -527,7 +543,30 @@ export default function Home() {
           )}
           <div className={`relative shadow-2xl rounded-[32px] overflow-hidden border group focus-within:border-blue-500/50 transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             {isLoading ? (<Button onClick={()=>abortRef.current?.abort()} className={`w-full h-14 rounded-none gap-2 font-black border-none transition-colors ${isDarkMode ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}><Square size={14} fill="currentColor"/> 停止生成</Button>) : (
-              <form onSubmit={handleSend} className="flex items-center p-2"><input type="file" ref={fileInputRef} hidden multiple accept="image/*,.py,.js,.txt,.md" onChange={(e)=>{const fs = Array.from(e.target.files as FileList); if (fs[0].type.startsWith('image/')) { fs.forEach(f => { const r = new FileReader(); r.onloadend = () => setImages(p => [...p, r.result as string]); r.readAsDataURL(f); }); } else { const r = new FileReader(); r.onloadend = () => setFile({ name: fs[0].name, content: r.result as string }); r.readAsText(fs[0]); }}} /><Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-blue-600/10 hover:text-blue-600 transition-all"><Paperclip size={22}/></Button><Input value={input} onChange={e=>setInput(e.target.value)} className={`flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium ${isDarkMode ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`} placeholder="有问题尽管问我... "/><Button type="submit" disabled={!input.trim() && images.length===0 && !file} className={`h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 border-none ${isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-slate-900 text-white hover:bg-blue-600'}`}><Send size={20} /></Button></form>
+              <form onSubmit={handleSend} className="flex items-center p-2">
+                {/* ✨✨✨ 核心修改：文件上传 Input 升级 (支持 Excel/CSV 读取为 DataURL) ✨✨✨ */}
+                <input type="file" ref={fileInputRef} hidden multiple accept="image/*,.xlsx,.csv,.txt,.md" onChange={(e)=>{
+                  const fs = Array.from(e.target.files as FileList); 
+                  if (fs.length === 0) return;
+                  const f = fs[0];
+                  const r = new FileReader();
+                  
+                  // 统一使用 DataURL 读取 (适配所有文件类型)
+                  r.onloadend = () => {
+                    if (f.type.startsWith('image/')) {
+                      setImages(p => [...p, r.result as string]);
+                    } else {
+                      // 将文件对象存入 state (包含 Base64 内容)
+                      setFile({ name: f.name, content: r.result as string }); 
+                    }
+                  };
+                  r.readAsDataURL(f);
+                }} />
+                
+                <Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-blue-600/10 hover:text-blue-600 transition-all"><Paperclip size={22}/></Button>
+                <Input value={input} onChange={e=>setInput(e.target.value)} className={`flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium ${isDarkMode ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`} placeholder="有问题尽管问我... "/>
+                <Button type="submit" disabled={!input.trim() && images.length===0 && !file} className={`h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 border-none ${isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-slate-900 text-white hover:bg-blue-600'}`}><Send size={20} /></Button>
+              </form>
             )}
           </div>
           <p className={`text-[9px] text-center mt-4 font-black uppercase tracking-widest opacity-60 ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>Eureka Site · Powered by Gemini Engine</p>
