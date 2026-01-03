@@ -74,7 +74,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [confirmPassword, setConfirmPassword] = useState(""); 
   const [nickname, setNickname] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
-  const [realCode, setRealCode] = useState("");
+  const [realCode, setRealCode] = useState(""); // ⚠️ 前端不再存真验证码了，安全！
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -82,7 +82,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [showConfirmPwd, setShowConfirmPwd] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
-  
   const [failCount, setFailCount] = useState(0); 
 
   const validateAccount = (val: string) => {
@@ -93,16 +92,31 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     return false;
   };
 
-  const sendCode = () => {
-    if (!validateAccount(account) || account === 'admin') { setError("请输入有效的手机号或邮箱"); return; }
-    setError(""); setCodeLoading(true);
-    setTimeout(() => {
-      setCodeLoading(false);
-      const c = Math.floor(100000+Math.random()*900000).toString();
-      setRealCode(c); setCount(60); 
-      alert(`【Eureka安全中心】验证码: ${c}`);
+  // ✨ 核心修改：请求后端发送真实/模拟短信
+  const sendCode = async () => {
+    if (!validateAccount(account) || account === 'admin') { setError("请输入有效的手机号"); return; }
+    setError(""); 
+    setCodeLoading(true);
+
+    try {
+      const res = await fetch('/api/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: account })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "发送失败");
+
+      alert("验证码已发送！(如果是测试环境，请查看Vercel后台日志)");
+      setCount(60);
       const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
-    }, 1500);
+
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setCodeLoading(false);
+    }
   };
 
   const handleAuth = async (e: any) => {
@@ -117,7 +131,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       if (authMode === 'register' && !nickname) { setError("请输入昵称"); return; }
       if (password.length < 6) { setError("密码长度不能少于6位"); return; }
       if (password !== confirmPassword) { setError("两次输入的密码不一致"); return; }
-      if (verifyCode !== realCode) { setError("验证码错误"); return; }
+      if (!verifyCode) { setError("请输入验证码"); return; } // 前端只校验非空
       if (authMode === 'register' && !agreed) { setError("请先阅读并同意服务条款"); return; }
     }
     
@@ -131,7 +145,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, account, password, nickname })
+        // ✨ 将用户输入的 verifyCode 发给后端校验
+        body: JSON.stringify({ type, account, password, nickname, verifyCode }) 
       });
       const data = await res.json();
       
@@ -187,9 +202,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
         <form onSubmit={handleAuth} className="space-y-4 text-left">
           {authMode === 'register' && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
           
-          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号或邮箱" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
+          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号 (仅限中国大陆)" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
           
-          {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
+          {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="短信验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
           
           <div className="relative group">
             <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
@@ -292,15 +307,11 @@ export default function Home() {
 
   const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
   
-  // ✨ 核心修复：Admin 特权通道
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
     if(!user) return false;
     
-    // 👑 特权：如果是 admin，直接放行，不走数据库，不扣费
-    if (user.role === 'admin') {
-      console.log("Admin 权限：免扣费通行");
-      return true;
-    }
+    // 👑 Admin 特权通道
+    if (user.role === 'admin') return true;
 
     const cur = parseFloat(user.balance);
     if(type === 'consume' && cur < amount) { alert("余额不足"); return false; }
@@ -323,7 +334,6 @@ export default function Home() {
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
     
-    // 执行扣费检查（Admin 会直接返回 true）
     const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
 
