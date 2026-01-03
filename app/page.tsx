@@ -13,10 +13,9 @@ import {
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
-// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. [保留] 独立组件：安全渲染相关指令 ---
+// --- 1. [保留] 独立组件 ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
@@ -41,7 +40,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
-// --- 2. [保留] 思维链组件 ---
+// --- 2. [保留] 思维链 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -67,7 +66,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [保留] 企业级安全认证组件 ---
+// --- 3. [核心修改] 修复注册漏洞 & 允许Admin登录 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
@@ -85,6 +84,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [error, setError] = useState("");
 
   const validateAccount = (val: string) => {
+    // ✨ 特例：允许 admin 通过校验，方便登录
+    if (val === 'admin') return true; 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const phoneRegex = /^1[3-9]\d{9}$/; 
     if (emailRegex.test(val) || phoneRegex.test(val)) return true;
@@ -92,7 +93,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   };
 
   const sendCode = () => {
-    if (!validateAccount(account)) { setError("请输入正确的邮箱地址或11位手机号"); return; }
+    if (!validateAccount(account) || account === 'admin') { setError("请输入有效的手机号或邮箱"); return; }
     setError(""); setCodeLoading(true);
     setTimeout(() => {
       setCodeLoading(false);
@@ -106,8 +107,17 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const handleAuth = async (e: any) => {
     e.preventDefault();
     setError("");
+    
+    // 基础非空检查
     if (!account) { setError("请输入账号"); return; }
-    if (!validateAccount(account) && account !== 'admin') { setError("账号格式不正确"); return; }
+    
+    // ✨ 核心修复：注册时严禁输入 admin，彻底堵死漏洞
+    if (isReg && account.toLowerCase() === 'admin') { 
+      setError("管理员账号不可注册"); 
+      return; 
+    }
+
+    if (!validateAccount(account)) { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
 
     if (isReg) {
@@ -120,7 +130,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     
     setLoading(true);
     
-    // ✨ 核心修改：调用后端数据库接口
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
@@ -134,7 +143,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
       
       if (!res.ok) throw new Error(data.error || "请求失败");
       
-      // 登录成功，保存到本地缓存（为了保持登录状态）并回调
       localStorage.setItem("my_ai_user", JSON.stringify(data));
       onLogin(data);
 
@@ -170,7 +178,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// --- 4. 主程序 (升级：连接云端数据库) ---
+// --- 4. 主程序 ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -188,31 +196,23 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
-  const [adminUsers, setAdminUsers] = useState<any[]>([]); // ✨ 新增：管理员查看的用户列表
+  const [adminUsers, setAdminUsers] = useState<any[]>([]); 
 
-  // 初始化：从本地缓存读取登录态，然后从云端拉取最新余额
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
-    if(u) { 
-      const p = JSON.parse(u); 
-      setUser(p); 
-      syncUserData(p.id, p.role); // 立即同步云端数据
-    }
+    if(u) { const p = JSON.parse(u); setUser(p); syncUserData(p.id, p.role); }
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme === 'dark') setIsDarkMode(true);
   }, []);
 
-  // ✨ 核心功能：同步云端数据 (余额、流水、管理员列表)
   const syncUserData = async (uid: string, role: string) => {
     try {
       const res = await fetch(`/api/sync?id=${uid}&role=${role}`);
       const data = await res.json();
-      
       if (data.balance) {
         setUser((prev:any) => ({ ...prev, balance: data.balance }));
         setTransactions(data.transactions || []);
       }
-      
       if (role === 'admin' && data.users) {
         setAdminUsers(data.users);
       }
@@ -226,15 +226,10 @@ export default function Home() {
   };
 
   const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
-
-  // ✨ 核心功能：云端扣费/充值
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
     if(!user) return false;
-    
-    // 乐观更新 UI (先变数字，让用户觉得快)
     const cur = parseFloat(user.balance);
     if(type === 'consume' && cur < amount) { alert("余额不足"); return false; }
-    
     try {
       const res = await fetch('/api/sync', {
         method: 'POST',
@@ -242,24 +237,17 @@ export default function Home() {
         body: JSON.stringify({ userId: user.id, type, amount, description: desc })
       });
       const data = await res.json();
-      
       if (!res.ok) { alert(data.error); return false; }
-      
-      // 更新本地状态
       setUser((prev:any) => ({ ...prev, balance: data.balance }));
-      syncUserData(user.id, user.role); // 刷新流水记录
+      syncUserData(user.id, user.role); 
       return true;
-    } catch (e) {
-      alert("网络错误"); return false;
-    }
+    } catch (e) { alert("网络错误"); return false; }
   };
 
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
-    
-    // 扣费成功才发送
     const success = await handleTX('consume', 0.01, "AI 服务资源调用");
     if (!success) return;
 
