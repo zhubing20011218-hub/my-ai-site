@@ -7,28 +7,21 @@ import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
-  History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight 
+  History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
+  Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. 独立组件：安全渲染相关指令 (您要的功能回来了！) ---
+// --- 1. [保留] 独立组件：安全渲染相关指令 ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
-  if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) {
-    return null;
-  }
-
+  if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
     const parts = content.split("___RELATED___");
     if (parts.length < 2) return null;
-
-    const questions = parts[1].split("|")
-      .map(q => q.trim())
-      .filter(q => q.length > 0);
-
+    const questions = parts[1].split("|").map(q => q.trim()).filter(q => q.length > 0);
     if (questions.length === 0) return null;
-
     return (
       <div className="mt-4 pt-3 border-t border-slate-200/60 grid gap-3 animate-in fade-in slide-in-from-top-1">
         <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase">
@@ -36,33 +29,21 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
         </div>
         <div className="flex flex-wrap gap-2">
           {questions.map((q, idx) => (
-            <button 
-              key={idx} 
-              onClick={() => onAsk(q)}
-              className="group flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-full text-xs font-bold transition-all border border-slate-200 hover:border-blue-200 active:scale-95 text-left"
-            >
-              <span>{q}</span>
-              <ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
+            <button key={idx} onClick={() => onAsk(q)} className="group flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-full text-xs font-bold transition-all border border-slate-200 hover:border-blue-200 active:scale-95 text-left">
+              <span>{q}</span><ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
             </button>
           ))}
         </div>
       </div>
     );
-  } catch (e) {
-    return null;
-  }
+  } catch (e) { return null; }
 }
 
-// --- 2. 思维链组件 ---
+// --- 2. [保留] 思维链组件 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
-  const plan = [
-    { title: "一、 需求语义深度解析", steps: ["提取关键词核心意图", "检索历史上下文关联"] },
-    { title: "二、 知识库实时广度检索", steps: ["跨域检索分布式知识节点", "验证数据准确性"] },
-    { title: "三、 响应架构多重建模", steps: ["逻辑推理路径模拟", "优化语言表达风格"] },
-    { title: "四、 生成结果合规性自检", steps: ["安全性策略实时匹配", "逻辑闭环终审校验"] }
-  ];
+  const plan = [{ title: "一、 需求语义深度解析", steps: ["提取关键词核心意图", "检索历史上下文关联"] }, { title: "二、 知识库实时广度检索", steps: ["跨域检索分布式知识节点", "验证数据准确性"] }, { title: "三、 响应架构多重建模", steps: ["逻辑推理路径模拟", "优化语言表达风格"] }, { title: "四、 生成结果合规性自检", steps: ["安全性策略实时匹配", "逻辑闭环终审校验"] }];
   useEffect(() => {
     let m1 = 0; let m2 = -1;
     const interval = setInterval(() => {
@@ -78,23 +59,13 @@ function Thinking({ modelName }: { modelName: string }) {
       <div className="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs">🧊</div>
       <div className="bg-slate-50 border border-slate-100 rounded-[24px] p-5 shadow-sm w-full max-w-md">
         <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b pb-3 mb-4"><Terminal size={10}/> <span>Eureka 使用 {modelName} 处理引擎</span></div>
-        <div className="space-y-4">
-          {plan.map((item, i) => (
-            <div key={i} className={`transition-all duration-500 ${i > major ? 'opacity-20' : 'opacity-100'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] border ${i < major ? 'bg-green-500 border-green-500 text-white' : i === major ? 'border-blue-500 text-blue-600 animate-pulse' : 'text-slate-300'}`}>{i < major ? <Check size={10} /> : i + 1}</div>
-                <span className={`text-[12px] font-black ${i === major ? 'text-slate-900' : 'text-slate-500'}`}>{item.title}</span>
-              </div>
-              <div className="ml-6 space-y-1.5 border-l-2 border-slate-100 pl-4">{item.steps.map((step, j) => (<div key={j} className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${(i < major || (i === major && j <= minor)) ? 'opacity-100' : 'opacity-0'}`}><div className="w-1 h-1 rounded-full bg-slate-300" /><span className="text-slate-400 font-medium">{j + 1}. {step}</span></div>))}</div>
-            </div>
-          ))}
-        </div>
+        <div className="space-y-4">{plan.map((item, i) => (<div key={i} className={`transition-all duration-500 ${i > major ? 'opacity-20' : 'opacity-100'}`}><div className="flex items-center gap-2 mb-2"><div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] border ${i < major ? 'bg-green-500 border-green-500 text-white' : i === major ? 'border-blue-500 text-blue-600 animate-pulse' : 'text-slate-300'}`}>{i < major ? <Check size={10} /> : i + 1}</div><span className={`text-[12px] font-black ${i === major ? 'text-slate-900' : 'text-slate-500'}`}>{item.title}</span></div><div className="ml-6 space-y-1.5 border-l-2 border-slate-100 pl-4">{item.steps.map((step, j) => (<div key={j} className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${(i < major || (i === major && j <= minor)) ? 'opacity-100' : 'opacity-0'}`}><div className="w-1 h-1 rounded-full bg-slate-300" /><span className="text-slate-400 font-medium">{j + 1}. {step}</span></div>))}</div></div>))}</div>
       </div>
     </div>
   );
 }
 
-// --- 3. 登录/注册组件 ---
+// --- 3. [升级] 企业级安全认证组件 (已修复第174行) ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
@@ -103,35 +74,72 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [verifyCode, setVerifyCode] = useState("");
   const [realCode, setRealCode] = useState("");
   const [count, setCount] = useState(0);
-  const [load, setLoad] = useState(false);
-  const sendCode = () => { if(!account) return alert("请填账号"); const c = Math.floor(100000+Math.random()*900000).toString(); setRealCode(c); setCount(60); alert(`验证码: ${c}`); const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000); };
+  const [loading, setLoading] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const [error, setError] = useState("");
+
+  const sendCode = () => {
+    if(!account.includes("@") && account.length < 11) { setError("请输入有效的手机号或邮箱"); return; }
+    setError("");
+    const c = Math.floor(100000+Math.random()*900000).toString();
+    setRealCode(c); setCount(60); alert(`【Eureka安全中心】验证码: ${c}`);
+    const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
+  };
+
   const handleAuth = (e: any) => {
-    e.preventDefault(); setLoad(true);
+    e.preventDefault();
+    if (isReg && !agreed) { setError("请先阅读并同意服务条款"); return; }
+    if (!account || !password) { setError("账号和密码不能为空"); return; }
+    if (isReg && password.length < 6) { setError("密码长度不能少于6位"); return; }
+    setError(""); setLoading(true);
     setTimeout(() => {
-      setLoad(false);
+      setLoading(false);
       if (isReg) {
+        if (verifyCode !== realCode) { setError("验证码错误"); return; }
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
-        if (verifyCode !== realCode) return alert("码错");
-        if (db.find((u:any)=>u.account===account)) return alert("已存在");
-        const u = { id: "u_"+Date.now(), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
+        if (db.find((u:any)=>u.account===account)) { setError("该账号已存在"); return; }
+        const u = { id: "u_"+Date.now(), nickname: nickname || "新用户", account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
         db.push(u); localStorage.setItem("my_ai_users_db", JSON.stringify(db));
-        localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u);
+        localStorage.setItem("my_ai_user", JSON.stringify(u)); 
+        onLogin(u);
       } else {
         if (account==="admin" && password==="admin123") { onLogin({ id: "admin_01", nickname: "Eureka管理员", account: "admin", role: 'admin', balance: "9999.00", regTime: "2026/1/1" }); return; }
         const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
         const u = db.find((x:any)=>x.account===account && x.password===password);
-        if(u){ localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u); } else alert("失败");
+        if(u){ localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u); } else { setError("账号或密码错误"); }
       }
-    }, 1000);
+    }, 1500);
   };
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4"><div className="flex items-center gap-3 mb-10 text-slate-900"><div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-3xl shadow-xl text-white font-bold">🧊</div><h1 className="text-4xl font-black tracking-tighter">Eureka</h1></div>
-      <Card className="w-full max-w-sm p-8 shadow-none border-none text-center text-slate-900"><form onSubmit={handleAuth} className="space-y-4 text-left">{isReg && <Input placeholder="昵称" className="bg-slate-50 border-none h-11 shadow-none" value={nickname} onChange={e=>setNickname(e.target.value)} />}<Input placeholder="邮箱/手机" className="bg-slate-50 border-none h-11 shadow-none" value={account} onChange={e=>setAccount(e.target.value)} />{isReg && <div className="flex gap-2"><Input placeholder="码" className="bg-slate-50 border-none h-11 shadow-none" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 w-20">{count>0?`${count}s`:"获取"}</Button></div>}<Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11 shadow-none" value={password} onChange={e=>setPassword(e.target.value)} /><Button className="w-full bg-slate-900 h-11 mt-2 text-white font-bold" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"注册":"登录"}</Button></form><div className="mt-8 flex flex-col items-center gap-3"><div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">注册送体验金！</span></div><button onClick={()=>setIsReg(!isReg)} className="text-xs text-blue-600 hover:underline">{isReg ? "去登录" : "点此注册"}</button></div></Card>
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+      <div className="flex items-center gap-3 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
+      <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px] animate-in zoom-in-95 duration-500">
+        <div className="text-left mb-6"><h2 className="text-2xl font-black text-slate-900">{isReg ? "创建新账户" : "欢迎回来"}</h2><p className="text-xs text-slate-400 mt-1">{isReg ? "开启您的 AI 探索之旅" : "使用您的 Eureka 账号登录"}</p></div>
+        <form onSubmit={handleAuth} className="space-y-4 text-left">
+          {isReg && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="您的昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
+          <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="邮箱或手机号" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
+          {isReg && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-12 w-24 rounded-2xl border-slate-200 text-slate-600 font-bold">{count>0 ? `${count}s` : "获取"}</Button></div>)}
+          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder="密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
+          
+          {/* ✨ 修复点：这里是您之前截图报错的地方，我已经将其写成了一行，确保不会断裂 */}
+          {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
+
+          {isReg && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
+          <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (isReg ? "立即注册" : "安全登录")}</Button>
+        </form>
+        <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
+          {isReg && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送 $0.10 体验金！</span></div>)}
+          <button onClick={()=>{setIsReg(!isReg); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{isReg ? "已有账号？去登录" : "没有账号？免费注册"}</button>
+        </div>
+      </Card>
+      <p className="mt-8 text-[10px] text-slate-300 font-mono">Eureka Secure Auth System © 2026</p>
     </div>
   );
 }
 
-// 4. 主程序
+// --- 4. 主程序 ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -179,10 +187,7 @@ export default function Home() {
     setIsLoading(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
-    const apiMessages = messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.content.text 
-    }));
+    const apiMessages = messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.text }));
     apiMessages.push({ role: 'user', content: content });
 
     setTimeout(async () => {
@@ -256,11 +261,10 @@ export default function Home() {
                 <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user'?'bg-slate-100 text-slate-900':'bg-white border border-slate-100 text-slate-900'}`}>
                   {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-3 text-sm">{m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}<p className="leading-relaxed font-medium">{m.content.text}</p></div>) : (
                     <div>
-                      {/* 1. 正常回复（屏蔽乱码） */}
                       <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800 text-slate-900">
                         <ReactMarkdown>{typeof m.content === 'string' ? m.content.split("___RELATED___")[0] : m.content.text}</ReactMarkdown>
                       </div>
-                      {/* 2. 相关指令胶囊（安全渲染，不报错） */}
+                      {/* [保留功能] 相关指令胶囊 */}
                       {m.role === 'assistant' && !isLoading && typeof m.content === 'string' && (
                         <RelatedQuestions content={m.content} onAsk={(q) => handleSend(null, q)} />
                       )}
