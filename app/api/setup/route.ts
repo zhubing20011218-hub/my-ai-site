@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // 1. 创建用户表 (users)
+    // 1. 用户表
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -19,7 +19,7 @@ export async function GET() {
       );
     `;
 
-    // 2. 创建交易记录表 (transactions)
+    // 2. 交易表
     await sql`
       CREATE TABLE IF NOT EXISTS transactions (
         id SERIAL PRIMARY KEY,
@@ -31,7 +31,18 @@ export async function GET() {
       );
     `;
 
-    return NextResponse.json({ message: "✅ 数据库表结构创建成功！现在可以开始同步数据了。" }, { status: 200 });
+    // 3. ✨ 新增：验证码临时表
+    await sql`
+      CREATE TABLE IF NOT EXISTS codes (
+        id SERIAL PRIMARY KEY,
+        phone TEXT NOT NULL,
+        code TEXT NOT NULL,
+        expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
+    return NextResponse.json({ message: "✅ 数据库升级成功！验证码表已就绪。" }, { status: 200 });
   } catch (error:any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
