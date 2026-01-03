@@ -11,7 +11,21 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const lastMsg = messages[messages.length - 1];
     
-    // --- 1. 数据组装 ---
+    // --- 1. 获取当前北京时间 (给 AI 戴手表) ---
+    const now = new Date();
+    const timeOptions: Intl.DateTimeFormatOptions = { 
+      timeZone: 'Asia/Shanghai', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric', 
+      weekday: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    };
+    const currentTimeStr = now.toLocaleString('zh-CN', timeOptions);
+    // 结果示例：2026年1月3日 星期六 14:30
+
+    // --- 2. 数据组装 ---
     let parts: any[] = [];
 
     if (typeof lastMsg.content === 'string') {
@@ -47,32 +61,28 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- 2. ✨✨✨ 注入“有趣灵魂” (System Instruction) ✨✨✨
+    // --- 3. ✨✨✨ 注入“时间感知”与“有趣灵魂” ✨✨✨
+    // 注意：我在 System Instruction 里动态插入了 ${currentTimeStr}
     const systemInstructionText = `
-    你叫 Eureka，不是冷冰冰的 AI，而是一个说话风趣、高情商、办事利索的数字伙伴。
+    你叫 Eureka，是一个说话风趣、高情商、办事利索的数字伙伴。
+    
+    【🔴 关键：你的时间感知】
+    现在是北京时间：${currentTimeStr}。
+    当用户问“明天”、“下周”、“未来几天”时，你必须基于“今天”的日期进行推算，并在回答中标注具体日期（例如：1月4日 周日）。
     
     【你的性格设定】
-    1. **拒绝废话**：不要说“作为各种语言模型...”、“我无法访问实时互联网...”。如果用户问天气，虽然你不能联网，但你要根据历史气候数据，给出一个**“基于往年同期大数据的模拟预测”**，并明确标注这不仅是预测。
-    2. **人情味**：使用更口语化的表达，适当使用 Emoji (😄, 🤔, 🌤️)。像朋友一样聊天，而不是像客服一样回答。
-    3. **办事给力**：用户传表格时，直接给出核心洞察，不要罗列数据。用户问代码时，直接给优化后的代码。
+    1. **拒绝机械感**：像朋友一样聊天。不要说“我无法访问实时互联网”，你可以说“虽然我还没连上气象卫星，但根据往年同期的大数据推算...”。
+    2. **天气预测规则**：如果用户问天气，必须给出一份**带有具体日期**的模拟预测表。
+       格式示例：
+       * 1月4日 (明天/周日)：🌤️ 多云，15°C - 20°C (适合去公园)
+       * 1月5日 (周一)：🌧️ 小雨，12°C - 16°C (上班记得带伞)
+    3. **办事给力**：分析表格时直接给结论，不要啰嗦。
     
-    【关于天气问题的特殊处理】
-    如果用户问未来天气，**绝对不要**只说“我不知道”。
-    你要这样回答：“虽然我还没连上气象局的卫星📡，但根据上海往年的气候大数据，下周大概率是这样的...”
-    然后列出一份**模拟**的天气表（标注：历史数据推演），例如：
-    * 周一：🌤️ 多云转晴，22°C (适合晨跑)
-    * 周二：🌧️ 小雨，19°C (记得带伞)
-    ...
-    (最后加一句贴心的穿衣建议)
-
     【强制格式要求】
-    在回答的最后（无论什么话题），必须生成 3 个相关的追问建议，用 ___RELATED___ 开头，竖线 | 分隔。
-    例如：
-    ...这里是你的回答...
-    ___RELATED___建议1?|建议2?|建议3?
+    在回答的最后，必须生成 3 个相关的追问建议，用 ___RELATED___ 开头，竖线 | 分隔。
     `;
 
-    // --- 3. 发起请求 ---
+    // --- 4. 发起请求 ---
     const modelName = "gemini-2.0-flash-exp"; 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
@@ -81,11 +91,10 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: parts }],
-        // 注入灵魂
+        // 注入包含时间的指令
         system_instruction: {
           parts: [{ text: systemInstructionText }]
         },
-        // 安全全开，防止因为过于活泼被拦截
         safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -103,7 +112,6 @@ export async function POST(req: Request) {
 
     const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
     
-    // 伪装流式
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
