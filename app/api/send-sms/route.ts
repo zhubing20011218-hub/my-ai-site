@@ -7,12 +7,14 @@ export const dynamic = 'force-dynamic';
 
 // 🔴 请在这里配置您的阿里云密钥 (生产环境建议放在 .env 文件中)
 const ALIYUN_CONFIG = {
-  accessKeyId: 'LTAIxxxxxxxxxxxx',     // <--- 替换为您的 AccessKey ID
-  accessKeySecret: 'xxxxxxxxxxxxxxxx', // <--- 替换为您的 AccessKey Secret
+  // 🔐 改成这样，从环境变量读取，不直接写死
+  accessKeyId: process.env.ALIYUN_ACCESS_KEY_ID,     
+  accessKeySecret: process.env.ALIYUN_ACCESS_KEY_SECRET, 
+  
   endpoint: 'https://dysmsapi.aliyuncs.com',
   apiVersion: '2017-05-25',
-  signName: '您的短信签名',             // <--- 阿里云审核通过的签名 (如: Eureka科技)
-  templateCode: 'SMS_123456789'        // <--- 阿里云审核通过的模板ID (模版内容: 您的验证码是${code})
+  signName: '阿里云短信测试',          
+  templateCode: 'SMS_154950909'       
 };
 
 export async function POST(req: Request) {
