@@ -11,19 +11,26 @@ export async function POST(req: Request) {
     const { messages } = await req.json();
     const lastMsg = messages[messages.length - 1];
     
-    // --- 1. 获取当前北京时间 (给 AI 戴手表) ---
+    // --- 1. ✨✨✨ 智能获取用户当地时间 (全球化适配) ✨✨✨
+    // Vercel 会自动把用户的时区放在请求头里，例如 'America/New_York' 或 'Europe/London'
+    // 本地开发时没有这个头，就默认用 'Asia/Shanghai'
+    const userTimeZone = req.headers.get('x-vercel-ip-timezone') || 'Asia/Shanghai';
+    
     const now = new Date();
     const timeOptions: Intl.DateTimeFormatOptions = { 
-      timeZone: 'Asia/Shanghai', 
+      timeZone: userTimeZone, // 👈 这里变成了动态的！
       year: 'numeric', 
       month: 'long', 
       day: 'numeric', 
       weekday: 'long',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: false // 使用24小时制，避免AM/PM混淆
     };
     const currentTimeStr = now.toLocaleString('zh-CN', timeOptions);
-    // 结果示例：2026年1月3日 星期六 14:30
+    
+    // 调试日志：看看用户到底在哪
+    console.log(`用户时区: ${userTimeZone}, 当地时间: ${currentTimeStr}`);
 
     // --- 2. 数据组装 ---
     let parts: any[] = [];
@@ -61,14 +68,17 @@ export async function POST(req: Request) {
       }
     }
 
-    // --- 3. ✨✨✨ 注入“时间感知”与“有趣灵魂” ✨✨✨
-    // 注意：我在 System Instruction 里动态插入了 ${currentTimeStr}
+    // --- 3. 注入动态时区的 System Instruction ---
     const systemInstructionText = `
     你叫 Eureka，是一个说话风趣、高情商、办事利索的数字伙伴。
     
-    【🔴 关键：你的时间感知】
-    现在是北京时间：${currentTimeStr}。
-    当用户问“明天”、“下周”、“未来几天”时，你必须基于“今天”的日期进行推算，并在回答中标注具体日期（例如：1月4日 周日）。
+    【🔴 关键：你的时空感知】
+    检测到用户当前位于 **${userTimeZone}** 时区。
+    现在的当地时间是：**${currentTimeStr}**。
+    
+    请注意：
+    1. 当用户问“现在几点”时，报出上面的当地时间。
+    2. 当用户问“明天天气”时，必须基于当地时间的日期进行推算。
     
     【你的性格设定】
     1. **拒绝机械感**：像朋友一样聊天。不要说“我无法访问实时互联网”，你可以说“虽然我还没连上气象卫星，但根据往年同期的大数据推算...”。
@@ -91,7 +101,6 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: parts }],
-        // 注入包含时间的指令
         system_instruction: {
           parts: [{ text: systemInstructionText }]
         },
