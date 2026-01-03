@@ -7,13 +7,58 @@ import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
-  History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, Paperclip, X, LogOut, Sparkles, PartyPopper 
+  History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight 
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. 思维链组件 ---
+// --- 1. 独立组件：安全渲染相关指令 (彻底解决 235 行报错) ---
+// 这个组件专门负责解析字符串，如果有错会自动忽略，绝不让主程序崩溃
+function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
+  // 安全检查：如果内容为空或没有分隔符，直接什么都不渲染
+  if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) {
+    return null;
+  }
+
+  try {
+    // 安全切割
+    const parts = content.split("___RELATED___");
+    if (parts.length < 2) return null;
+
+    // 提取问题并清洗
+    const questions = parts[1].split("|")
+      .map(q => q.trim())
+      .filter(q => q.length > 0);
+
+    if (questions.length === 0) return null;
+
+    return (
+      <div className="mt-4 pt-3 border-t border-slate-200/60 grid gap-3 animate-in fade-in slide-in-from-top-1">
+        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase">
+          <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 您可能感兴趣
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {questions.map((q, idx) => (
+            <button 
+              key={idx} 
+              onClick={() => onAsk(q)}
+              className="group flex items-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-600 rounded-full text-xs font-bold transition-all border border-slate-200 hover:border-blue-200 active:scale-95 text-left"
+            >
+              <span>{q}</span>
+              <ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  } catch (e) {
+    // 即使出错也不崩
+    return null;
+  }
+}
+
+// --- 2. 思维链组件 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -54,7 +99,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 2. 登录/注册组件 (已修复第89行报错) ---
+// --- 3. 登录/注册组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
@@ -86,19 +131,12 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   };
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4"><div className="flex items-center gap-3 mb-10 text-slate-900"><div className="w-12 h-12 bg-slate-900 rounded-2xl flex items-center justify-center text-3xl shadow-xl text-white font-bold">🧊</div><h1 className="text-4xl font-black tracking-tighter">Eureka</h1></div>
-      <Card className="w-full max-w-sm p-8 shadow-none border-none text-center text-slate-900"><form onSubmit={handleAuth} className="space-y-4 text-left">{isReg && <Input placeholder="昵称" className="bg-slate-50 border-none h-11 shadow-none" value={nickname} onChange={e=>setNickname(e.target.value)} />}<Input placeholder="邮箱/手机" className="bg-slate-50 border-none h-11 shadow-none" value={account} onChange={e=>setAccount(e.target.value)} />{isReg && <div className="flex gap-2"><Input placeholder="码" className="bg-slate-50 border-none h-11 shadow-none" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 w-20">{count>0?`${count}s`:"获取"}</Button></div>}<Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11 shadow-none" value={password} onChange={e=>setPassword(e.target.value)} /><Button className="w-full bg-slate-900 h-11 mt-2 text-white font-bold" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"注册":"登录"}</Button></form>
-      <div className="mt-8 flex flex-col items-center gap-3">
-        {/* ✨ 修复点：修正了之前这里的 className 语法错误 */}
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse">
-          <PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">注册送体验金！</span>
-        </div>
-        <button onClick={()=>setIsReg(!isReg)} className="text-xs text-blue-600 hover:underline">{isReg ? "去登录" : "点此注册"}</button>
-      </div></Card>
+      <Card className="w-full max-w-sm p-8 shadow-none border-none text-center text-slate-900"><form onSubmit={handleAuth} className="space-y-4 text-left">{isReg && <Input placeholder="昵称" className="bg-slate-50 border-none h-11 shadow-none" value={nickname} onChange={e=>setNickname(e.target.value)} />}<Input placeholder="邮箱/手机" className="bg-slate-50 border-none h-11 shadow-none" value={account} onChange={e=>setAccount(e.target.value)} />{isReg && <div className="flex gap-2"><Input placeholder="码" className="bg-slate-50 border-none h-11 shadow-none" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-11 w-20">{count>0?`${count}s`:"获取"}</Button></div>}<Input type="password" placeholder="密码" className="bg-slate-50 border-none h-11 shadow-none" value={password} onChange={e=>setPassword(e.target.value)} /><Button className="w-full bg-slate-900 h-11 mt-2 text-white font-bold" disabled={load}>{load?<Loader2 className="animate-spin"/>:isReg?"注册":"登录"}</Button></form><div className="mt-8 flex flex-col items-center gap-3"><div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">注册送体验金！</span></div><button onClick={()=>setIsReg(!isReg)} className="text-xs text-blue-600 hover:underline">{isReg ? "去登录" : "点此注册"}</button></div></Card>
     </div>
   );
 }
 
-// 3. 主程序
+// 4. 主程序
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -140,21 +178,16 @@ export default function Home() {
     if (!content.trim() && images.length === 0 && !file) return;
     if (!handleTX('consume', 0.01, "AI 服务资源调用")) return;
 
-    // 1. 创建 UI 用的消息对象（包含图片、文件对象，方便界面展示）
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
-    setMessages(prev => [...prev, uiMsg]); // 立即上屏
-    
+    setMessages(prev => [...prev, uiMsg]);
     setInput(""); setImages([]); setFile(null); 
     setIsLoading(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
-    // 2. 准备发送给 API 的消息载荷（必须清洗数据！）
-    // ✨ 核心修复：把历史记录里的“对象”转成“纯文本”，否则第二次提问后端会报错
     const apiMessages = messages.map(m => ({
       role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.content.text // 强制取 .text
+      content: typeof m.content === 'string' ? m.content : m.content.text 
     }));
-    // 加上当前这一条
     apiMessages.push({ role: 'user', content: content });
 
     setTimeout(async () => {
@@ -162,10 +195,7 @@ export default function Home() {
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            messages: apiMessages, // ✨ 发送清洗过的纯文本历史
-            model 
-          }),
+          body: JSON.stringify({ messages: apiMessages, model }),
           signal: ctrl.signal
         });
         const reader = response.body?.getReader();
@@ -230,7 +260,17 @@ export default function Home() {
               <div className="max-w-[85%] flex flex-col gap-2">
                 <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user'?'bg-slate-100 text-slate-900':'bg-white border border-slate-100 text-slate-900'}`}>
                   {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-3 text-sm">{m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}<p className="leading-relaxed font-medium">{m.content.text}</p></div>) : (
-                    <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800 text-slate-900"><ReactMarkdown>{typeof m.content === 'string' ? m.content : m.content.text}</ReactMarkdown></div>
+                    <div>
+                      {/* 渲染回复正文：屏蔽掉 ___RELATED___ 后面的内容，只显示正文 */}
+                      <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800 text-slate-900">
+                        <ReactMarkdown>{typeof m.content === 'string' ? m.content.split("___RELATED___")[0] : m.content.text}</ReactMarkdown>
+                      </div>
+                      
+                      {/* 调用安全组件：渲染胶囊按钮 */}
+                      {m.role === 'assistant' && !isLoading && typeof m.content === 'string' && (
+                        <RelatedQuestions content={m.content} onAsk={(q) => handleSend(null, q)} />
+                      )}
+                    </div>
                   )}
                   {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(typeof m.content === 'string' ? m.content : m.content.text); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
                 </div>
@@ -249,8 +289,8 @@ export default function Home() {
             <div className="flex flex-wrap gap-2 mb-4 animate-in slide-in-from-bottom-2 bg-white/50 backdrop-blur p-2 rounded-2xl border border-slate-100 shadow-sm">{images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12"><img src={img} className="w-full h-full object-cover rounded-xl border" alt="pre"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm active:scale-90 transition-all"><X size={10}/></button></div>))}{file && (<div className="bg-white px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-2 border border-slate-200 font-bold shadow-sm"><span>📄 {file.name}</span><button onClick={()=>setFile(null)} className="text-red-400 hover:text-red-500"><X size={12}/></button></div>)}</div>
           )}
           <div className="relative shadow-2xl rounded-[32px] overflow-hidden border border-slate-200 bg-white group focus-within:border-blue-200 transition-all text-slate-900">
-            {isLoading ? (<Button onClick={()=>abortRef.current?.abort()} className="w-full bg-slate-50 text-slate-500 h-14 rounded-none gap-2 font-black border-none hover:bg-slate-100 transition-colors"><Square size={14} fill="currentColor"/> 停止</Button>) : (
-              <form onSubmit={handleSend} className="flex items-center p-2 bg-white"><input type="file" ref={fileInputRef} hidden multiple accept="image/*,.py,.js,.txt,.md" onChange={(e)=>{const fs = Array.from(e.target.files as FileList); if (fs[0].type.startsWith('image/')) { fs.forEach(f => { const r = new FileReader(); r.onloadend = () => setImages(p => [...p, r.result as string]); r.readAsDataURL(f); }); } else { const r = new FileReader(); r.onloadend = () => setFile({ name: fs[0].name, content: r.result as string }); r.readAsText(fs[0]); }}} /><Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-slate-50 hover:text-blue-600 transition-all"><Paperclip size={22}/></Button><Input value={input} onChange={e=>setInput(e.target.value)} className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium text-slate-900" placeholder="有问题尽管问我... "/><Button type="submit" disabled={!input.trim() && images.length===0 && !file} className="bg-slate-900 hover:bg-blue-600 h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 text-white border-none"><Send size={20} /></Button></form>
+            {isLoading ? (<Button onClick={()=>abortRef.current?.abort()} className="w-full bg-slate-50 text-slate-500 h-14 rounded-none gap-2 font-black border-none hover:bg-slate-100 transition-colors text-slate-900"><Square size={14} fill="currentColor"/> 停止生成</Button>) : (
+              <form onSubmit={handleSend} className="flex items-center p-2 bg-white"><input type="file" ref={fileInputRef} hidden multiple accept="image/*,.py,.js,.txt,.md" onChange={(e)=>{const fs = Array.from(e.target.files as FileList); if (fs[0].type.startsWith('image/')) { fs.forEach(f => { const r = new FileReader(); r.onloadend = () => setImages(p => [...p, r.result as string]); r.readAsDataURL(f); }); } else { const r = new FileReader(); r.onloadend = () => setFile({ name: fs[0].name, content: r.result as string }); r.readAsText(fs[0]); }}} /><Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-slate-50 hover:text-blue-600 transition-all text-slate-900"><Paperclip size={22}/></Button><Input value={input} onChange={e=>setInput(e.target.value)} className="flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium text-slate-900" placeholder="有问题尽管问我... "/><Button type="submit" disabled={!input.trim() && images.length===0 && !file} className="bg-slate-900 hover:bg-blue-600 h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 text-white border-none"><Send size={20} /></Button></form>
             )}
           </div>
           <p className="text-[9px] text-center text-slate-400 mt-4 font-black uppercase tracking-widest opacity-60 text-slate-400">Eureka Site · Powered by Gemini Engine</p>
