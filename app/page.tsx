@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
   Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, ArrowLeft
+  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -74,7 +74,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [confirmPassword, setConfirmPassword] = useState(""); 
   const [nickname, setNickname] = useState("");
   const [verifyCode, setVerifyCode] = useState("");
-  const [realCode, setRealCode] = useState(""); // ⚠️ 前端不再存真验证码了，安全！
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [codeLoading, setCodeLoading] = useState(false);
@@ -92,7 +91,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     return false;
   };
 
-  // ✨ 核心修改：请求后端发送真实/模拟短信
   const sendCode = async () => {
     if (!validateAccount(account) || account === 'admin') { setError("请输入有效的手机号"); return; }
     setError(""); 
@@ -105,88 +103,55 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
         body: JSON.stringify({ phone: account })
       });
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || "发送失败");
-
-      alert("验证码已发送！(如果是测试环境，请查看Vercel后台日志)");
+      alert("验证码已发送！");
       setCount(60);
       const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
-
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setCodeLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setCodeLoading(false); }
   };
 
   const handleAuth = async (e: any) => {
     e.preventDefault();
     setError("");
-    
     if (!account) { setError("请输入账号"); return; }
     if (authMode !== 'login' && !validateAccount(account)) { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
-
     if (authMode === 'register' || authMode === 'forgot') {
       if (authMode === 'register' && !nickname) { setError("请输入昵称"); return; }
       if (password.length < 6) { setError("密码长度不能少于6位"); return; }
       if (password !== confirmPassword) { setError("两次输入的密码不一致"); return; }
-      if (!verifyCode) { setError("请输入验证码"); return; } // 前端只校验非空
+      if (!verifyCode) { setError("请输入验证码"); return; }
       if (authMode === 'register' && !agreed) { setError("请先阅读并同意服务条款"); return; }
     }
-    
     setLoading(true);
-    
     let type = 'login';
     if (authMode === 'register') type = 'register';
     if (authMode === 'forgot') type = 'reset-password';
-
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // ✨ 将用户输入的 verifyCode 发给后端校验
         body: JSON.stringify({ type, account, password, nickname, verifyCode }) 
       });
       const data = await res.json();
-      
       if (!res.ok) {
         if (type === 'login') {
           const newCount = failCount + 1;
           setFailCount(newCount);
           if (newCount >= 5) {
-            alert("您已连续输错5次密码，为保护账号安全，系统将引导您重置密码。");
-            setAuthMode('forgot');
-            setError("请验证身份以重置密码");
-            setFailCount(0); 
-            setLoading(false);
-            return;
+            alert("您已连续输错5次密码，安全保护触发，请重置密码。");
+            setAuthMode('forgot'); setError("请验证身份以重置密码"); setFailCount(0); setLoading(false); return;
           }
         }
         throw new Error(data.error || "请求失败");
       }
-      
-      if (authMode === 'forgot') {
-        alert("密码重置成功！请使用新密码登录。");
-        setAuthMode('login');
-        setPassword("");
-        setConfirmPassword("");
-        setLoading(false);
-        return;
-      }
-
+      if (authMode === 'forgot') { alert("密码重置成功！"); setAuthMode('login'); setPassword(""); setConfirmPassword(""); setLoading(false); return; }
       localStorage.setItem("my_ai_user", JSON.stringify(data));
       onLogin(data);
-
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
-  let title = "欢迎回来";
-  let subtitle = "使用您的 Eureka 账号登录";
+  let title = "欢迎回来"; let subtitle = "使用您的 Eureka 账号登录";
   if (authMode === 'register') { title = "创建新账户"; subtitle = "开启您的 AI 探索之旅"; }
   if (authMode === 'forgot') { title = "找回密码"; subtitle = "验证您的身份以重置密码"; }
 
@@ -201,44 +166,16 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
         </div>
         <form onSubmit={handleAuth} className="space-y-4 text-left">
           {authMode === 'register' && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
-          
           <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号 (仅限中国大陆)" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
-          
           {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="短信验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
-          
-          <div className="relative group">
-            <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
-            <Input type={showPwd ? "text" : "password"} placeholder={authMode === 'login' ? "请输入密码" : "设置新密码 (6位以上)"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
-          </div>
-          
-          {(authMode === 'register' || authMode === 'forgot') && (
-            <div className="relative group animate-in slide-in-from-top-2">
-              <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
-              <Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
-            </div>
-          )}
-
-          {authMode === 'login' && (
-            <div className="flex justify-end mt-1">
-              <button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button>
-            </div>
-          )}
-
+          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder={authMode === 'login' ? "请输入密码" : "设置新密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
+          {(authMode === 'register' || authMode === 'forgot') && (<div className="relative group animate-in slide-in-from-top-2"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
+          {authMode === 'login' && (<div className="flex justify-end mt-1"><button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button></div>)}
           {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
-          
           {authMode === 'register' && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
-          
-          <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>
-            {loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? "安全登录" : (authMode === 'register' ? "立即注册" : "重置密码"))}
-          </Button>
+          <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? "安全登录" : (authMode === 'register' ? "立即注册" : "重置密码"))}</Button>
         </form>
-        
-        {authMode !== 'forgot' && (
-          <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">
-            {authMode === 'register' && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送 $0.10 体验金！</span></div>)}
-            <button onClick={()=>{setAuthMode(authMode==='login'?'register':'login'); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{authMode === 'login' ? "没有账号？免费注册" : "已有账号？去登录"}</button>
-          </div>
-        )}
+        {authMode !== 'forgot' && (<div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">{authMode === 'register' && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送 $0.10 体验金！</span></div>)}<button onClick={()=>{setAuthMode(authMode==='login'?'register':'login'); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{authMode === 'login' ? "没有账号？免费注册" : "已有账号？去登录"}</button></div>)}
       </Card>
       <p className="mt-8 text-[10px] text-slate-300 font-mono">Eureka Secure Auth System © 2026</p>
     </div>
@@ -264,7 +201,10 @@ export default function Home() {
   const abortRef = useRef<AbortController | null>(null);
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
-  const [adminUserTx, setAdminUserTx] = useState<any[]>([]); 
+  const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
+  const [isAdminCardsOpen, setIsAdminCardsOpen] = useState(false); // ✨ 新增：卡密管理窗口
+  const [cards, setCards] = useState<any[]>([]);
+  const [cardConfig, setCardConfig] = useState({amount: 10, count: 1, days: 0}); // 生成配置
 
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
@@ -281,9 +221,7 @@ export default function Home() {
         setUser((prev:any) => ({ ...prev, balance: data.balance }));
         setTransactions(data.transactions || []);
       }
-      if (role === 'admin' && data.users) {
-        setAdminUsers(data.users);
-      }
+      if (role === 'admin' && data.users) setAdminUsers(data.users);
     } catch (e) { console.error("Sync error:", e); }
   };
 
@@ -293,10 +231,54 @@ export default function Home() {
     try {
       const res = await fetch(`/api/sync?id=${targetUser.id}`); 
       const data = await res.json();
-      if (data.transactions) {
-        setAdminUserTx(data.transactions);
-      }
+      if (data.transactions) setAdminUserTx(data.transactions);
     } catch (e) { alert("获取详情失败"); }
+  };
+
+  // ✨ 管理员：获取卡密列表
+  const fetchCards = async () => {
+    try {
+      const res = await fetch('/api/admin/cards');
+      const data = await res.json();
+      if(data.cards) setCards(data.cards);
+    } catch(e) { console.error(e); }
+  };
+
+  // ✨ 管理员：生成卡密
+  const generateCards = async () => {
+    try {
+      const res = await fetch('/api/admin/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cardConfig)
+      });
+      const data = await res.json();
+      if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); }
+      else alert(data.error);
+    } catch(e) { alert("生成失败"); }
+  };
+
+  // ✨ 用户：核销卡密
+  const redeemCard = async () => {
+    const code = (document.getElementById('card-input') as HTMLInputElement).value;
+    if(!code) return alert("请输入卡密");
+    
+    try {
+      const res = await fetch('/api/card/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, code })
+      });
+      const data = await res.json();
+      if(data.success) {
+        alert(`充值成功！到账 $${data.amount}`);
+        setUser((prev:any) => ({ ...prev, balance: data.balance }));
+        syncUserData(user.id, user.role); // 刷新余额和流水
+        setIsRechargeOpen(false);
+      } else {
+        alert(data.error);
+      }
+    } catch(e) { alert("网络请求失败"); }
   };
 
   const toggleTheme = () => {
@@ -309,10 +291,7 @@ export default function Home() {
   
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
     if(!user) return false;
-    
-    // 👑 Admin 特权通道
     if (user.role === 'admin') return true;
-
     const cur = parseFloat(user.balance);
     if(type === 'consume' && cur < amount) { alert("余额不足"); return false; }
     try {
@@ -333,19 +312,15 @@ export default function Home() {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
-    
     const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
     if (!success) return;
-
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
     setMessages(prev => [...prev, uiMsg]);
     setInput(""); setImages([]); setFile(null); 
     setIsLoading(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
-
     const apiMessages = messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.text }));
     apiMessages.push({ role: 'user', content: content });
-
     setTimeout(async () => {
       try {
         const response = await fetch('/api/chat', {
@@ -399,10 +374,15 @@ export default function Home() {
         </div>
       </nav>
 
+      {/* Admin Panel */}
       {user?.role === 'admin' && (
         <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
            <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
-           <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
+           {/* ✨ 新增：卡密管理入口 */}
+           <div className="mb-4">
+             <Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}} className="w-full h-9 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl text-[10px] font-black border-none transition-all flex items-center justify-center gap-2"><CreditCard size={12}/> 卡密管理中心</Button>
+           </div>
+           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
               {adminUsers.map((u:any)=>(
                 <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
                   <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
@@ -413,6 +393,23 @@ export default function Home() {
            </div>
         </div>
       )}
+
+      {/* Admin Cards Dialog */}
+      <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
+        <DialogHeader className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密生成与管理</DialogTitle></DialogHeader>
+        <div className="p-6 space-y-6">
+          <div className={`p-4 rounded-2xl border flex flex-wrap gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">面额 ($)</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
+            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">数量 (张)</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
+            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">有效期 (天, 0为永久)</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
+            <Button onClick={generateCards} className="h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl"><Plus size={14} className="mr-1"/> 生成</Button>
+          </div>
+          <div className="max-h-[400px] overflow-y-auto space-y-2 pr-1">
+             <div className="grid grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span>状态</span><span>有效期</span><span>使用者</span></div>
+             {cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div>${c.amount}</div><div className={c.status==='used'?'text-red-500':'text-green-500'}>{c.status==='used'?'已用':'正常'}</div><div>{c.expires_at}</div><div>{c.used_by || '-'}</div></div>))}
+          </div>
+        </div>
+      </DialogContent></Dialog>
 
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-10 pb-32">
         <div className="max-w-3xl mx-auto space-y-10">
@@ -459,7 +456,8 @@ export default function Home() {
         </div>
       </div>
 
-      <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={()=>{ const val = (document.getElementById('card-input') as HTMLInputElement).value; if(val.toUpperCase()==="BOSS"){ handleTX('topup',10,"卡密充值"); setIsRechargeOpen(false); alert("成功！"); } else alert("无效"); }} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
+      {/* 充值弹窗：已接入真实核销逻辑 */}
+      <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={redeemCard} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
       <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">
         {(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (
           <div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
