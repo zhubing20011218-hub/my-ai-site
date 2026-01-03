@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
   Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar, MessageCircle, UserCog
+  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar, MessageCircle, RefreshCw
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -187,7 +187,7 @@ export default function Home() {
   const [cards, setCards] = useState<any[]>([]);
   const [cardConfig, setCardConfig] = useState({amount: 10, count: 1, days: 0});
 
-  // ✨ 客服功能 State
+  // 客服相关
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportInput, setSupportInput] = useState("");
@@ -203,7 +203,7 @@ export default function Home() {
     if (savedTheme === 'dark') setIsDarkMode(true);
   }, []);
 
-  // ✨ 轮询客服消息 (每3秒)
+  // 轮询逻辑
   useEffect(() => {
     let interval: any;
     if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) {
@@ -219,12 +219,11 @@ export default function Home() {
         } catch(e) {}
       };
       fetchMsg();
-      interval = setInterval(fetchMsg, 3000); // 3秒轮询
+      interval = setInterval(fetchMsg, 3000); 
     }
     return () => clearInterval(interval);
   }, [user, isSupportOpen, isAdminSupportOpen, activeSessionUser]);
 
-  // ✨ 管理员获取会话列表
   const fetchSupportSessions = async () => {
     try {
       const res = await fetch('/api/support?action=list');
@@ -233,7 +232,6 @@ export default function Home() {
     } catch(e) {}
   };
 
-  // ✨ 发送客服消息
   const sendSupportMessage = async () => {
     if(!supportInput.trim()) return;
     const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id;
@@ -244,7 +242,6 @@ export default function Home() {
         body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' })
       });
       setSupportInput("");
-      // 立即刷新
       const res = await fetch(`/api/support?action=history&userId=${targetUserId}`);
       const data = await res.json();
       if (data.messages) setSupportMessages(data.messages);
@@ -426,44 +423,59 @@ export default function Home() {
         </div>
       )}
 
-      {/* Admin Cards Dialog */}
+      {/* Admin Cards Dialog - ✨ 手机适配版 */}
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
-        <DialogHeader className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密生成与管理</DialogTitle></DialogHeader>
+        <DialogHeader className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader>
         <div className="p-6 space-y-6">
-          <div className={`p-4 rounded-2xl border flex flex-wrap gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
-            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">面额 ($)</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
-            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">数量 (张)</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
-            <div className="space-y-2"><label className="text-[10px] font-bold uppercase text-slate-400">有效期 (天, 0为永久)</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-9 w-24 bg-transparent border-slate-300/20"/></div>
-            <Button onClick={generateCards} className="h-9 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl"><Plus size={14} className="mr-1"/> 生成</Button>
+          <div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+            <div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div>
+            <div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div>
+            <div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div>
+            <Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button>
           </div>
           <div className="max-h-[400px] overflow-y-auto space-y-2 pr-1">
-             <div className="grid grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span>状态</span><span>有效期</span><span>使用者</span></div>
-             {cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div>${c.amount}</div><div className={c.status==='used'?'text-red-500':'text-green-500'}>{c.status==='used'?'已用':'正常'}</div><div>{c.expires_at}</div><div>{c.used_by || '-'}</div></div>))}
+             {/* 手机只显示2列，电脑显示5列 */}
+             <div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>
+             {cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
+                <div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div>
+                <div className="flex items-center gap-2">
+                   <span>${c.amount}</span>
+                   {/* 手机端把状态显示在这里 */}
+                   <span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span>
+                </div>
+                <div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div>
+                <div className="hidden md:block">{c.expires_at}</div>
+                <div className="hidden md:block">{c.used_by || '-'}</div>
+             </div>))}
+             {cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}
           </div>
         </div>
       </DialogContent></Dialog>
 
-      {/* Admin Support Dialog */}
+      {/* Admin Support Dialog - ✨ 手机适配版 */}
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
-         <div className="flex h-[600px]">
-           <div className={`w-1/3 border-r p-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-             <h3 className="font-black text-sm mb-4 flex items-center gap-2"><MessageCircle size={16}/> 会话列表</h3>
-             <div className="space-y-2">
+         {/* 手机端改为上下布局 (flex-col)，电脑端左右 (md:flex-row) */}
+         <div className="flex flex-col md:flex-row h-[600px]">
+           {/* 左侧列表：手机端高度150px，电脑端高度100% */}
+           <div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+             <h3 className="font-black text-sm mb-4 flex items-center justify-between"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3>
+             <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">
                {supportSessions.map(s => (
-                 <div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}>
-                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-xs">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div>
+                 <div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}>
+                    <div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div>
                     <div className="text-[10px] truncate opacity-60">{s.last_message}</div>
                  </div>
                ))}
-               {supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无咨询</div>}
+               {supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}
              </div>
            </div>
-           <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative">
+           {/* 右侧/下方聊天区域 */}
+           <div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">
              {activeSessionUser ? (<>
-               <div className="flex-1 overflow-y-auto p-6 space-y-4">
+               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
                  {supportMessages.map(m => (
                    <div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}>
-                     <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div>
+                     <div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div>
                    </div>
                  ))}
                  <div ref={supportScrollRef} />
@@ -472,7 +484,7 @@ export default function Home() {
                  <Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/>
                  <Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button>
                </div>
-             </>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 请选择一个左侧的会话</div>)}
+             </>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}
            </div>
          </div>
       </DialogContent></Dialog>
@@ -522,7 +534,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* ✨ 悬浮客服按钮 (仅用户可见，管理员不需要发给自己) */}
       {user?.role === 'user' && (
         <div className="fixed right-6 bottom-6 z-40">
            {!isSupportOpen ? (
@@ -532,7 +543,6 @@ export default function Home() {
              </button>
            ) : (
              <Card className={`w-80 h-[450px] shadow-2xl border-none flex flex-col rounded-[24px] overflow-hidden animate-in zoom-in slide-in-from-bottom-10 origin-bottom-right ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
-                {/* Header */}
                 <div className="p-4 bg-blue-600 text-white flex justify-between items-center shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">👩‍💼</div>
@@ -540,7 +550,6 @@ export default function Home() {
                   </div>
                   <button onClick={()=>setIsSupportOpen(false)} className="opacity-80 hover:opacity-100"><X size={18}/></button>
                 </div>
-                {/* Messages */}
                 <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
                   <div className="text-center text-[10px] text-slate-400 my-2">- 官方客服已接入会话 -</div>
                   {supportMessages.map(m => (
@@ -551,7 +560,6 @@ export default function Home() {
                   ))}
                   <div ref={supportScrollRef} />
                 </div>
-                {/* Input */}
                 <div className={`p-3 border-t shrink-0 flex gap-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                    <Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="描述您的问题..." className="h-9 text-xs border-none bg-slate-100 dark:bg-slate-950"/>
                    <Button onClick={sendSupportMessage} size="icon" className="h-9 w-9 bg-blue-600 rounded-xl"><Send size={14}/></Button>
@@ -561,7 +569,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 充值弹窗 */}
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={redeemCard} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
       <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">
         {(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (
