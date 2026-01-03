@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
+// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
 // --- 1. [保留] 独立组件：安全渲染相关指令 ---
@@ -66,7 +67,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [升级] 企业级安全认证组件 (新增：正则校验) ---
+// --- 3. [保留] 企业级安全认证组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [isReg, setIsReg] = useState(false);
   const [account, setAccount] = useState("");
@@ -83,36 +84,30 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState("");
 
-  // ✨ 严格的账号验证逻辑
   const validateAccount = (val: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^1[3-9]\d{9}$/; // 简单的中国手机号校验
-    if (emailRegex.test(val)) return true;
-    if (phoneRegex.test(val)) return true;
+    const phoneRegex = /^1[3-9]\d{9}$/; 
+    if (emailRegex.test(val) || phoneRegex.test(val)) return true;
     return false;
   };
 
   const sendCode = () => {
     if (!validateAccount(account)) { setError("请输入正确的邮箱地址或11位手机号"); return; }
-    setError("");
-    setCodeLoading(true);
+    setError(""); setCodeLoading(true);
     setTimeout(() => {
       setCodeLoading(false);
       const c = Math.floor(100000+Math.random()*900000).toString();
-      setRealCode(c); 
-      setCount(60); 
+      setRealCode(c); setCount(60); 
       alert(`【Eureka安全中心】验证码: ${c}`);
       const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
     }, 1500);
   };
 
-  const handleAuth = (e: any) => {
+  const handleAuth = async (e: any) => {
     e.preventDefault();
     setError("");
-    
-    // 基础非空检查
     if (!account) { setError("请输入账号"); return; }
-    if (!validateAccount(account)) { setError("账号格式不正确（请输入邮箱或手机号）"); return; }
+    if (!validateAccount(account) && account !== 'admin') { setError("账号格式不正确"); return; }
     if (!password) { setError("请输入密码"); return; }
 
     if (isReg) {
@@ -124,22 +119,30 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     }
     
     setLoading(true);
-    setTimeout(() => {
+    
+    // ✨ 核心修改：调用后端数据库接口
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          type: isReg ? 'register' : 'login',
+          account, password, nickname 
+        })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "请求失败");
+      
+      // 登录成功，保存到本地缓存（为了保持登录状态）并回调
+      localStorage.setItem("my_ai_user", JSON.stringify(data));
+      onLogin(data);
+
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
       setLoading(false);
-      if (isReg) {
-        const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
-        if (db.find((u:any)=>u.account===account)) { setError("该账号已存在"); return; }
-        const u = { id: "u_"+Date.now(), nickname, account, password, balance: "0.10", regTime: new Date().toLocaleString(), role: 'user' };
-        db.push(u); localStorage.setItem("my_ai_users_db", JSON.stringify(db));
-        localStorage.setItem("my_ai_user", JSON.stringify(u)); 
-        onLogin(u);
-      } else {
-        if (account==="admin" && password==="admin123") { onLogin({ id: "admin_01", nickname: "Eureka管理员", account: "admin", role: 'admin', balance: "9999.00", regTime: "2026/1/1" }); return; }
-        const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
-        const u = db.find((x:any)=>x.account===account && x.password===password);
-        if(u){ localStorage.setItem("my_ai_user", JSON.stringify(u)); onLogin(u); } else { setError("账号或密码错误"); }
-      }
-    }, 1500);
+    }
   };
 
   return (
@@ -151,18 +154,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
           {isReg && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
           <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号或邮箱" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
           {isReg && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
-          <div className="relative group">
-            <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
-            <Input type={showPwd ? "text" : "password"} placeholder={isReg ? "设置密码 (6位以上)" : "请输入密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} />
-            <button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
-          </div>
-          {isReg && (
-            <div className="relative group animate-in slide-in-from-top-2">
-              <Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/>
-              <Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} />
-              <button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button>
-            </div>
-          )}
+          <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder={isReg ? "设置密码 (6位以上)" : "请输入密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
+          {isReg && (<div className="relative group animate-in slide-in-from-top-2"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
           {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
           {isReg && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
           <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (isReg ? "立即注册" : "安全登录")}</Button>
@@ -177,7 +170,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// --- 4. 主程序 (新增：Dark Mode 支持) ---
+// --- 4. 主程序 (升级：连接云端数据库) ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -190,19 +183,41 @@ export default function Home() {
   const [model, setModel] = useState("Gemini 3 Pro");
   const [images, setImages] = useState<string[]>([]);
   const [file, setFile] = useState<{name:string, content:string} | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(false); // ✨ Dark Mode State
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
+  const [adminUsers, setAdminUsers] = useState<any[]>([]); // ✨ 新增：管理员查看的用户列表
 
+  // 初始化：从本地缓存读取登录态，然后从云端拉取最新余额
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
-    if(u) { const p = JSON.parse(u); setUser(p); setTransactions(JSON.parse(localStorage.getItem(`tx_${p.id}`) || "[]")); }
-    // 读取保存的主题
+    if(u) { 
+      const p = JSON.parse(u); 
+      setUser(p); 
+      syncUserData(p.id, p.role); // 立即同步云端数据
+    }
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme === 'dark') setIsDarkMode(true);
   }, []);
+
+  // ✨ 核心功能：同步云端数据 (余额、流水、管理员列表)
+  const syncUserData = async (uid: string, role: string) => {
+    try {
+      const res = await fetch(`/api/sync?id=${uid}&role=${role}`);
+      const data = await res.json();
+      
+      if (data.balance) {
+        setUser((prev:any) => ({ ...prev, balance: data.balance }));
+        setTransactions(data.transactions || []);
+      }
+      
+      if (role === 'admin' && data.users) {
+        setAdminUsers(data.users);
+      }
+    } catch (e) { console.error("Sync error:", e); }
+  };
 
   const toggleTheme = () => {
     const newMode = !isDarkMode;
@@ -211,27 +226,42 @@ export default function Home() {
   };
 
   const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
-  const handleTX = (type: 'topup' | 'consume', amount: number, desc: string) => {
+
+  // ✨ 核心功能：云端扣费/充值
+  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
     if(!user) return false;
+    
+    // 乐观更新 UI (先变数字，让用户觉得快)
     const cur = parseFloat(user.balance);
-    const newVal = type === 'topup' ? cur + amount : cur - amount;
-    if(newVal < 0) { alert("余额不足"); return false; }
-    const upd = { ...user, balance: newVal.toFixed(2) };
-    const tx: Transaction = { id: "tx_"+Date.now(), type, amount: amount.toFixed(2), description: desc, time: new Date().toLocaleString() };
-    setUser(upd); setTransactions(p => [tx, ...p]);
-    localStorage.setItem("my_ai_user", JSON.stringify(upd));
-    const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
-    localStorage.setItem("my_ai_users_db", JSON.stringify(db.map((x:any)=>x.id===user.id?upd:x)));
-    const logs = JSON.parse(localStorage.getItem(`tx_${user.id}`) || "[]");
-    localStorage.setItem(`tx_${user.id}`, JSON.stringify([tx, ...logs]));
-    return true;
+    if(type === 'consume' && cur < amount) { alert("余额不足"); return false; }
+    
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, type, amount, description: desc })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) { alert(data.error); return false; }
+      
+      // 更新本地状态
+      setUser((prev:any) => ({ ...prev, balance: data.balance }));
+      syncUserData(user.id, user.role); // 刷新流水记录
+      return true;
+    } catch (e) {
+      alert("网络错误"); return false;
+    }
   };
 
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
-    if (!handleTX('consume', 0.01, "AI 服务资源调用")) return;
+    
+    // 扣费成功才发送
+    const success = await handleTX('consume', 0.01, "AI 服务资源调用");
+    if (!success) return;
 
     const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
     setMessages(prev => [...prev, uiMsg]);
@@ -266,10 +296,9 @@ export default function Home() {
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
 
-  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); const init: Transaction = { id: 'init', type: 'topup', amount: '0.10', description: '注册赠送', time: new Date().toLocaleString() }; setTransactions([init]); localStorage.setItem(`tx_${u.id}`, JSON.stringify([init])); }} />;
+  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); }} />;
 
   return (
-    // ✨ 动态暗黑模式类名
     <div className={`flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-x-hidden`}>
       <div className={`w-full py-2 text-center border-b transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
         <p className={`text-[11px] font-medium tracking-tight ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>欢迎来到Eureka，有问题可以 <a href="/kefu.jpg" target="_blank" className="text-blue-500 font-bold hover:underline mx-1">联系客服</a></p>
@@ -277,11 +306,7 @@ export default function Home() {
       <nav className={`h-14 flex items-center justify-between px-6 border-b shrink-0 transition-colors ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
         <div className="flex items-center gap-2 font-black text-xl tracking-tighter"><div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
         <div className="flex items-center gap-4">
-           {/* ✨ 暗黑模式切换按钮 */}
-           <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-             {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-           </button>
-
+           <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button>
            <Select value={model} onValueChange={(v) => v === "Gemini 3 Pro" ? setModel(v) : alert("正在维护中")}>
               <SelectTrigger className={`w-40 h-8 border-none text-[10px] font-bold shadow-none focus:ring-0 ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-900'}`}><SelectValue /></SelectTrigger>
               <SelectContent className={`rounded-xl shadow-xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-white'}`}><SelectItem value="Gemini 3 Pro">Gemini 3 Pro</SelectItem><SelectItem value="gpt">ChatGPT Plus</SelectItem><SelectItem value="sora">Sora</SelectItem><SelectItem value="nano">Nano Banana</SelectItem></SelectContent>
@@ -302,9 +327,9 @@ export default function Home() {
 
       {user?.role === 'admin' && (
         <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
-           <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN</div>
+           <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
            <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-              {JSON.parse(localStorage.getItem("my_ai_users_db") || "[]").map((u:any)=>(<div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}><div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div><div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div><Button onClick={() => setSelectedAdminUser(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">详情</Button></div>))}
+              {adminUsers.map((u:any)=>(<div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}><div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div><div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div></div>))}
            </div>
         </div>
       )}
