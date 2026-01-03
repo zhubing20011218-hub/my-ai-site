@@ -13,20 +13,16 @@ import ReactMarkdown from 'react-markdown'
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// --- 1. 独立组件：安全渲染相关指令 (彻底解决 235 行报错) ---
-// 这个组件专门负责解析字符串，如果有错会自动忽略，绝不让主程序崩溃
+// --- 1. 独立组件：安全渲染相关指令 (您要的功能回来了！) ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
-  // 安全检查：如果内容为空或没有分隔符，直接什么都不渲染
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) {
     return null;
   }
 
   try {
-    // 安全切割
     const parts = content.split("___RELATED___");
     if (parts.length < 2) return null;
 
-    // 提取问题并清洗
     const questions = parts[1].split("|")
       .map(q => q.trim())
       .filter(q => q.length > 0);
@@ -53,7 +49,6 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
       </div>
     );
   } catch (e) {
-    // 即使出错也不崩
     return null;
   }
 }
@@ -162,7 +157,7 @@ export default function Home() {
     const newVal = type === 'topup' ? cur + amount : cur - amount;
     if(newVal < 0) { alert("余额不足"); return false; }
     const upd = { ...user, balance: newVal.toFixed(2) };
-    const tx = { id: "tx_"+Date.now(), type, amount: amount.toFixed(2), description: desc, time: new Date().toLocaleString() };
+    const tx: Transaction = { id: "tx_"+Date.now(), type, amount: amount.toFixed(2), description: desc, time: new Date().toLocaleString() };
     setUser(upd); setTransactions(p => [tx, ...p]);
     localStorage.setItem("my_ai_user", JSON.stringify(upd));
     const db = JSON.parse(localStorage.getItem("my_ai_users_db") || "[]");
@@ -261,12 +256,11 @@ export default function Home() {
                 <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user'?'bg-slate-100 text-slate-900':'bg-white border border-slate-100 text-slate-900'}`}>
                   {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-3 text-sm">{m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}<p className="leading-relaxed font-medium">{m.content.text}</p></div>) : (
                     <div>
-                      {/* 渲染回复正文：屏蔽掉 ___RELATED___ 后面的内容，只显示正文 */}
+                      {/* 1. 正常回复（屏蔽乱码） */}
                       <div className="prose prose-sm max-w-none leading-relaxed font-medium text-slate-800 text-slate-900">
                         <ReactMarkdown>{typeof m.content === 'string' ? m.content.split("___RELATED___")[0] : m.content.text}</ReactMarkdown>
                       </div>
-                      
-                      {/* 调用安全组件：渲染胶囊按钮 */}
+                      {/* 2. 相关指令胶囊（安全渲染，不报错） */}
                       {m.role === 'assistant' && !isLoading && typeof m.content === 'string' && (
                         <RelatedQuestions content={m.content} onAsk={(q) => handleSend(null, q)} />
                       )}
