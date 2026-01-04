@@ -16,18 +16,17 @@ import ReactMarkdown from 'react-markdown'
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// ✨✨✨ [新增] 模型定价表 (权限控制核心) ✨✨✨
-// 在这里配置每个工具的价格。未来您可以把这个移到数据库里动态获取。
+// ✨ 模型定价表
 const MODEL_PRICING: Record<string, number> = {
-  "gemini-2.0-flash-exp": 0.01,  // 基础对话
-  "gemini-1.5-pro": 0.05,        // 高级推理
-  "gemini-2.0-flash-thinking-exp": 0.10, // 深度思考
-  "sora-v1": 2.50,               // 🚨 昂贵工具 (Sora)
-  "veo-google": 1.80,            // 🚨 昂贵工具 (Veo)
-  "banana-sdxl": 0.20,           // 绘图工具
+  "gemini-2.0-flash-exp": 0.01,
+  "gemini-1.5-pro": 0.05,
+  "gemini-2.0-flash-thinking-exp": 0.10,
+  "sora-v1": 2.50,
+  "veo-google": 1.80,
+  "banana-sdxl": 0.20,
 };
 
-// --- 1. [保留] 独立组件 ---
+// --- 1. 独立组件 ---
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
@@ -52,7 +51,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
-// --- 2. [保留] 思维链 ---
+// --- 2. 思维链 ---
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -78,7 +77,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// --- 3. [保留] 认证组件 ---
+// --- 3. 认证组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
   const [account, setAccount] = useState("");
@@ -199,7 +198,6 @@ export default function Home() {
   const [cards, setCards] = useState<any[]>([]);
   const [cardConfig, setCardConfig] = useState({amount: 10, count: 1, days: 0});
 
-  // 客服相关
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportInput, setSupportInput] = useState("");
@@ -237,7 +235,6 @@ export default function Home() {
     if (savedTheme === 'dark') setIsDarkMode(true);
   }, []);
 
-  // 轮询逻辑
   useEffect(() => {
     let interval: any;
     if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) {
@@ -371,7 +368,6 @@ export default function Home() {
     } catch (e) { alert("网络错误"); return false; }
   };
 
-  // --- 旧发送逻辑 (保留给 RelatedQuestions) ---
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
@@ -380,7 +376,7 @@ export default function Home() {
     setInput(""); setImages([]); setFile(null); 
   };
 
-  // --- ✨✨✨ 新发送逻辑：整合权限检查与动态定价 ✨✨✨
+  // --- ✨✨✨ 新发送逻辑：完全解锁模型ID ✨✨✨
   const handleChatSubmit = async (
     text: string, 
     attachments: File[] = [], 
@@ -391,16 +387,13 @@ export default function Home() {
     // 1. 💰 计算成本 & 权限拦截
     const cost = MODEL_PRICING[modelId] || 0.01;
     const success = await handleTX('consume', cost, `使用 ${modelId} 生成内容`);
-    if (!success) return; // 余额不足，直接停止
+    if (!success) return; 
 
-    // 2. 🛡️ 智能路由 (为了防止报错，暂时将 Sora/Veo 指向 Gemini)
-    // 这样用户可以体验“扣费”流程，但后台不会因为没有 Sora Key 而崩溃
-    // 等您有了 Key，把这里改成 let apiModel = modelId 即可
-    let apiModel = "gemini-2.0-flash-exp"; 
-    if (modelId === "gemini-1.5-pro") apiModel = "gemini-1.5-pro";
-    // 注意：Sora 和 Veo 暂时也走 Gemini 通道，但会在 prompt 里带上标识
+    // ✅ 关键修改：不再强制转为 gemini-2.0，而是把真实 ID (如 sora-v1) 发给后端
+    // 这样后端就能根据 ID 进行路由了！
+    let apiModel = modelId;
     
-    // 3. 处理文件
+    // 处理文件
     const processedImages: string[] = [];
     let processedFile: { name: string, content: string } | null = null;
 
@@ -419,7 +412,7 @@ export default function Home() {
       }
     }
 
-    // 4. UI 更新
+    // UI 更新
     const uiContent = { 
       text: text, 
       images: processedImages, 
@@ -475,12 +468,9 @@ export default function Home() {
 
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-x-hidden`}>
-      {/* 顶部通告 */}
       <div className={`w-full py-2 text-center border-b transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
         <p className={`text-[11px] font-medium tracking-tight ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>欢迎来到Eureka，有问题可以 <a href="#" onClick={(e)=>{e.preventDefault(); setIsSupportOpen(true)}} className="text-blue-500 font-bold hover:underline mx-1">联系客服</a></p>
       </div>
-      
-      {/* 导航栏 */}
       <nav className={`h-14 flex items-center justify-between px-6 border-b shrink-0 transition-colors ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
         <div className="flex items-center gap-2 font-black text-xl tracking-tighter"><div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
         <div className="flex items-center gap-4">
@@ -499,7 +489,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Admin Panel (如果用户是 Admin 才显示) */}
+      {/* Admin Panel */}
       {user?.role === 'admin' && (
         <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
            <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
@@ -520,12 +510,11 @@ export default function Home() {
         </div>
       )}
 
-      {/* Admin Dialogs (Card & Support) */}
+      {/* Admin Cards Dialog */}
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader><div className="flex flex-col md:flex-row h-[600px]"><div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3><div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">{supportSessions.map(s => (<div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}><div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div><div className="text-[10px] truncate opacity-60">{s.last_message}</div></div>))}{supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}</div></div><div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">{activeSessionUser ? (<><div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">{supportMessages.map(m => (<div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div></div>))}<div ref={supportScrollRef} /></div><div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/><Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button></div></>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}</div></div></DialogContent></Dialog>
       <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
 
-      {/* 聊天区域 */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-10 pb-32">
         <div className="max-w-3xl mx-auto space-y-10">
           {messages.length === 0 && (
@@ -538,14 +527,12 @@ export default function Home() {
                 {m.role!=='user' && <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs font-bold ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>🧊</div>}
                 <div className="max-w-[85%] flex flex-col gap-2">
                   <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user' ? (isDarkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-white border border-slate-100 text-slate-900')}`}>
-                    {/* 用户消息 */}
                     {m.role === 'user' && typeof m.content === 'object' ? (
                       <div className="space-y-3 text-sm">
                         {m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}
                         <p className="leading-relaxed font-medium">{m.content.text}</p>
                       </div>
                     ) : (
-                      /* AI 消息 */
                       <div>
                         <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
                           <ReactMarkdown>{cleanText}</ReactMarkdown>
@@ -570,7 +557,6 @@ export default function Home() {
                         )}
                       </div>
                     )}
-                    {/* 复制 */}
                     {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50/10 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(cleanText); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
                   </div>
                 </div>
@@ -583,12 +569,10 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 底部输入框 */}
       <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-2 pt-10 z-10">
         <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
       </div>
 
-      {/* 用户客服悬浮球 */}
       {user?.role === 'user' && (
         <div className="fixed right-6 bottom-6 z-40">
             {!isSupportOpen ? (
@@ -624,8 +608,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* 充值 & 详情弹窗 (保持原样) */}
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={redeemCard} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
+      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
     </div>
   );
 }
