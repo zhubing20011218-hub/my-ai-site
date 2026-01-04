@@ -1,138 +1,154 @@
-import { NextResponse } from 'next/server';
-import * as XLSX from 'xlsx';
+import { NextRequest, NextResponse } from 'next/server';
 
-export const dynamic = 'force-dynamic';
+// 定义 runtime，边缘计算首选
+export const runtime = 'edge';
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
+    const { messages, model } = await req.json();
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "API Key 未配置" }, { status: 500 });
 
-    const { messages } = await req.json();
-    const lastMsg = messages[messages.length - 1];
+    if (!apiKey) {
+      return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
+    }
+
+    // ✨✨✨ 核心修改：支持自定义代理地址 ✨✨✨
+    // 如果环境变量里配了 GEMINI_BASE_URL，就用配的；否则用 Google 官方的。
+    // 注意：官方地址是 https://generativelanguage.googleapis.com
+    let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
     
-    // --- 1. ✨✨✨ 智能获取用户当地时间 (全球化适配) ✨✨✨
-    // Vercel 会自动把用户的时区放在请求头里，例如 'America/New_York' 或 'Europe/London'
-    // 本地开发时没有这个头，就默认用 'Asia/Shanghai'
-    const userTimeZone = req.headers.get('x-vercel-ip-timezone') || 'Asia/Shanghai';
-    
-    const now = new Date();
-    const timeOptions: Intl.DateTimeFormatOptions = { 
-      timeZone: userTimeZone, // 👈 这里变成了动态的！
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric', 
-      weekday: 'long',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false // 使用24小时制，避免AM/PM混淆
-    };
-    const currentTimeStr = now.toLocaleString('zh-CN', timeOptions);
-    
-    // 调试日志：看看用户到底在哪
-    console.log(`用户时区: ${userTimeZone}, 当地时间: ${currentTimeStr}`);
+    // 去掉末尾的斜杠（防止用户多填）
+    if (baseUrl.endsWith('/')) {
+        baseUrl = baseUrl.slice(0, -1);
+    }
 
-    // --- 2. 数据组装 ---
-    let parts: any[] = [];
+    // 1. 整理历史记录 (将前端的消息格式转为 Gemini 格式)
+    // 这里的逻辑是：把最后一条（包含图片/文件）和前面的历史记录拼接
+    const contents = messages.map((m: any) => {
+      const parts = [];
+      
+      // (A) 处理文本
+      if (typeof m.content === 'string') {
+        parts.push({ text: m.content });
+      } else if (m.content?.text) {
+        parts.push({ text: m.content.text });
+      }
 
-    if (typeof lastMsg.content === 'string') {
-      parts.push({ text: lastMsg.content });
-    } else if (typeof lastMsg.content === 'object') {
-      const text = lastMsg.content.text || "";
-      if (text) parts.push({ text: text });
-
-      if (lastMsg.content.images?.length > 0) {
-        lastMsg.content.images.forEach((img: string) => {
-          parts.push({
-            inline_data: {
-              mime_type: "image/jpeg",
-              data: img.split(',')[1]
-            }
-          });
+      // (B) 处理图片 (Base64)
+      if (m.content?.images && Array.isArray(m.content.images)) {
+        m.content.images.forEach((img: string) => {
+          // 提取 base64 逗号后面的部分
+          const base64Data = img.split(',')[1]; 
+          if (base64Data) {
+            parts.push({
+              inlineData: {
+                mimeType: 'image/jpeg', // 简单起见，默认 jpeg，Gemini 兼容性很好
+                data: base64Data
+              }
+            });
+          }
         });
       }
 
-      if (lastMsg.content.file) {
-        const file = lastMsg.content.file;
-        try {
-          if (file.name.match(/\.(xlsx|xls|csv)$/i)) {
-            const workbook = XLSX.read(file.content.split(',')[1], { type: 'base64' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const csvData = XLSX.utils.sheet_to_csv(sheet);
-            parts.push({ text: `\n\n【表格数据】\n${csvData.slice(0, 15000)}` });
-          } else if (file.name.match(/\.(txt|md|js|py|json)$/i)) {
-             const textData = Buffer.from(file.content.split(',')[1], 'base64').toString('utf-8');
-             parts.push({ text: `\n\n【文件内容】\n${textData.slice(0, 15000)}` });
-          }
-        } catch (e) { console.error(e); }
+      // (C) 处理文件 (这里简单处理，Gemini 目前主要支持图片/PDF，纯文本文件通常作为 prompt 插入)
+      if (m.content?.file && m.content.file.content) {
+         const fileContent = m.content.file.content.split(',')[1];
+         // 如果是 PDF
+         if(m.content.file.name.endsWith('.pdf')) {
+            parts.push({
+              inlineData: {
+                mimeType: 'application/pdf',
+                data: fileContent
+              }
+            });
+         } else {
+            // 其他文件尝试作为文本提示词塞进去
+            // 注意：真实场景最好在前端解析 excel/csv 为 markdown 表格再发过来
+            // 这里暂且忽略二进制流，防止报错
+         }
       }
-    }
 
-    // --- 3. 注入动态时区的 System Instruction ---
-    const systemInstructionText = `
-    你叫 Eureka，是一个说话风趣、高情商、办事利索的数字伙伴。
-    
-    【🔴 关键：你的时空感知】
-    检测到用户当前位于 **${userTimeZone}** 时区。
-    现在的当地时间是：**${currentTimeStr}**。
-    
-    请注意：
-    1. 当用户问“现在几点”时，报出上面的当地时间。
-    2. 当用户问“明天天气”时，必须基于当地时间的日期进行推算。
-    
-    【你的性格设定】
-    1. **拒绝机械感**：像朋友一样聊天。不要说“我无法访问实时互联网”，你可以说“虽然我还没连上气象卫星，但根据往年同期的大数据推算...”。
-    2. **天气预测规则**：如果用户问天气，必须给出一份**带有具体日期**的模拟预测表。
-       格式示例：
-       * 1月4日 (明天/周日)：🌤️ 多云，15°C - 20°C (适合去公园)
-       * 1月5日 (周一)：🌧️ 小雨，12°C - 16°C (上班记得带伞)
-    3. **办事给力**：分析表格时直接给结论，不要啰嗦。
-    
-    【强制格式要求】
-    在回答的最后，必须生成 3 个相关的追问建议，用 ___RELATED___ 开头，竖线 | 分隔。
-    `;
+      return {
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: parts
+      };
+    });
 
-    // --- 4. 发起请求 ---
-    const modelName = "gemini-2.0-flash-exp"; 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    // 2. 构造请求 URL
+    const url = `${baseUrl}/v1beta/models/${model || 'gemini-2.0-flash-exp'}:streamGenerateContent?key=${apiKey}`;
 
+    // 3. 发起请求
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: parts }],
-        system_instruction: {
-          parts: [{ text: systemInstructionText }]
-        },
-        safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-        ]
-      })
+      body: JSON.stringify({ contents: contents }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      throw new Error(data.error?.message || "Google API Error");
+        const errText = await response.text();
+        console.error("Gemini API Error:", errText);
+        return NextResponse.json({ error: `Gemini API Error: ${response.statusText}`, details: errText }, { status: response.status });
     }
 
-    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    
-    const encoder = new TextEncoder();
+    // 4. 处理流式响应 (Stream)
     const stream = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(replyText));
+      async start(controller) {
+        const reader = response.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          // Gemini 的流式返回是一个个 JSON 对象，通常以 '[' 开头，']' 结尾，中间逗号分隔
+          // 我们需要解析出 candidates[0].content.parts[0].text
+          // 为了简单，我们这里直接把原始数据处理一下发给前端，或者简单正则提取
+          // ⚡️ 简单处理方案：
+          // Google 返回的数据格式比较复杂，这里我们尝试提取 "text": "..."
+          
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 剩下的放回 buffer
+
+          for (const line of lines) {
+             const trimmed = line.trim();
+             if (!trimmed) continue;
+             // 这里的解析比较粗暴，但有效：直接找 text 字段
+             try {
+                // 去掉开头的逗号（如果是流的中间部分）
+                let cleanJson = trimmed;
+                if (cleanJson.startsWith(',')) cleanJson = cleanJson.slice(1);
+                if (cleanJson.startsWith('[')) cleanJson = cleanJson.slice(1);
+                if (cleanJson.endsWith(']')) cleanJson = cleanJson.slice(0, -1);
+                
+                const json = JSON.parse(cleanJson);
+                const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                    controller.enqueue(new TextEncoder().encode(text));
+                }
+             } catch (e) {
+                // 解析失败忽略，继续积攒 buffer
+             }
+          }
+        }
         controller.close();
       }
     });
 
-    return new NextResponse(stream);
+    return new NextResponse(stream, {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
 
-  } catch (error: any) {
-    console.error("System Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e: any) {
+    console.error(e);
+    return NextResponse.json({ error: e.message || 'Server Error' }, { status: 500 });
   }
 }
