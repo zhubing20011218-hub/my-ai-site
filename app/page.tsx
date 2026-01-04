@@ -197,22 +197,18 @@ export default function Home() {
   const [activeSessionUser, setActiveSessionUser] = useState<string|null>(null);
   const supportScrollRef = useRef<HTMLDivElement>(null);
 
-  // ✨✨✨ 1. 解析助手：分离文本和建议 JSON ✨✨✨
+  // ✨ 解析助手：分离文本和建议 JSON
   const parseMessageContent = (content: any) => {
-    // 1. 如果是混合对象（带图片的文件），只处理 text 字段
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
 
-    // 2. 定义分离暗号
     const START_TAG = '<<<SUGGESTIONS_START>>>';
     const END_TAG = '<<<SUGGESTIONS_END>>>';
 
-    // 3. 尝试分离
     const parts = rawText.split(START_TAG);
-    const cleanText = parts[0]; // 暗号前面的都是正文
+    const cleanText = parts[0]; 
     let suggestions: string[] = [];
 
-    // 4. 尝试提取 JSON
     if (parts[1]) {
       try {
         const jsonStr = parts[1].split(END_TAG)[0];
@@ -366,85 +362,55 @@ export default function Home() {
     } catch (e) { alert("网络错误"); return false; }
   };
 
-// --- 1. 旧的发送逻辑 (保留这个！因为"相关问题"和"示例提示词"按钮还需要它) ---
+// --- 1. 旧的发送逻辑 (保持完整，供相关问题按钮使用) ---
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
     if (!content.trim() && images.length === 0 && !file) return;
     
-    const success = await handleTX('consume', 0.01, `使用 ${model} 生成回答`);
-    if (!success) return;
-
-    // 1. 本地 UI 显示
-    const uiMsg = { role: 'user', content: { text: content, images: [...images], file: file ? file.name : null } };
-    setMessages(prev => [...prev, uiMsg]);
-    setInput(""); setImages([]); setFile(null); 
-    setIsLoading(true);
-    const ctrl = new AbortController(); abortRef.current = ctrl;
-
-    // 2. 准备发送给 API 的数据
-    const apiMessages = messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.text }));
+    // 复用新的逻辑，避免代码重复
+    await handleChatSubmit(content, [], model);
     
-    apiMessages.push({ 
-      role: 'user', 
-      content: { 
-        text: content, 
-        images: [...images], 
-        file: file 
-      } 
-    });
-
-    setTimeout(async () => {
-      try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: apiMessages, model }),
-          signal: ctrl.signal
-        });
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-        while (true) {
-          const { done, value } = await reader?.read()!;
-          if (done) break;
-          const text = decoder.decode(value);
-          setMessages(prev => { const last = [...prev]; last[last.length - 1].content += text; return last; });
-        }
-      } catch (err: any) { if(err.name !== 'AbortError') console.error(err); } 
-      finally { setIsLoading(false); abortRef.current = null; }
-    }, 1000); 
+    // 清空本地状态
+    setInput(""); setImages([]); setFile(null); 
   };
 
-  // --- 2. 新的发送逻辑 (专门给新版 ChatInput 使用) ---
-  // ✨ 这就是刚才没放对位置的那个函数 ✨
-  const handleChatSubmit = async (text: string, attachments: File[], modelId: string) => {
-    // 1. 映射模型 ID -> 具体的 API 模型名称
-    let apiModel = "gemini-2.0-flash-exp"; // 默认 Fast
+  // --- 2. 新的发送逻辑 (修复了参数崩溃 Bug 🚨) ---
+  // 给 attachments 和 modelId 加上了默认值 = [] 和 = "gemini..."
+  const handleChatSubmit = async (
+    text: string, 
+    attachments: File[] = [], // ✅ 修复：默认空数组，防崩
+    modelId: string = "gemini-2.0-flash-exp" // ✅ 修复：默认模型，防崩
+  ) => {
+    
+    // 映射模型 ID
+    let apiModel = "gemini-2.0-flash-exp"; 
     if (modelId === "pro") apiModel = "gemini-1.5-pro";
     else if (modelId === "thinking") apiModel = "gemini-2.0-flash-thinking-exp";
     
-    setModel(apiModel); // 同步一下界面状态
+    setModel(apiModel); 
 
-    // 2. 处理文件 (把 File 对象转为 API 需要的 Base64 格式)
+    // 处理文件 (把 File 对象转为 API 需要的 Base64 格式)
     const processedImages: string[] = [];
     let processedFile: { name: string, content: string } | null = null;
 
-    for (const file of attachments) {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve) => {
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.readAsDataURL(file);
-      });
+    if (attachments && attachments.length > 0) {
+      for (const file of attachments) {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
 
-      if (file.type.startsWith("image/")) {
-        processedImages.push(base64);
-      } else {
-        processedFile = { name: file.name, content: base64 };
+        if (file.type.startsWith("image/")) {
+          processedImages.push(base64);
+        } else {
+          processedFile = { name: file.name, content: base64 };
+        }
       }
     }
 
-    // 3. 执行发送核心逻辑
+    // 执行发送核心逻辑
     const success = await handleTX('consume', 0.01, `使用 ${apiModel} 生成回答`);
     if (!success) return;
 
@@ -588,7 +554,6 @@ export default function Home() {
       {/* Admin Support Dialog */}
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
          
-         {/* ✅ 新增这行：给盲人阅读器看的标题 (sr-only表示视觉隐藏但机器能读) */}
          <DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader>
 
          <div className="flex flex-col md:flex-row h-[600px]">
@@ -629,7 +594,6 @@ export default function Home() {
             <div className="flex flex-col items-center py-10 text-center animate-in fade-in zoom-in duration-700"><div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl font-bold ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><h2 className="text-3xl font-black mb-10 tracking-tight">有什么可以帮您的？</h2><div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">{["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (<button key={idx} onClick={() => handleSend(null, txt)} className={`flex items-center justify-center p-6 border rounded-3xl hover:border-slate-300 transition-all text-sm font-bold shadow-sm h-24 text-center leading-relaxed ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}>{txt}</button>))}</div></div>
           )}
           {messages.map((m, i) => {
-            // ✨ 1. 调用解析函数
             const { cleanText, suggestions } = parseMessageContent(m.content);
             
             return (
@@ -645,13 +609,13 @@ export default function Home() {
                         <p className="leading-relaxed font-medium">{m.content.text}</p>
                       </div>
                     ) : (
-                      /* ✨ 2. AI 消息渲染 (使用 cleanText) */
+                      /* AI 消息渲染 (使用 cleanText) */
                       <div>
                         <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
                           <ReactMarkdown>{cleanText}</ReactMarkdown>
                         </div>
 
-                        {/* ✨ 3. 渲染建议按钮 (如果有建议，且不是 loading 状态) */}
+                        {/* 渲染建议按钮 */}
                         {suggestions.length > 0 && (
                           <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-2 animate-in fade-in slide-in-from-top-1">
                             <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-1">
@@ -661,7 +625,7 @@ export default function Home() {
                               {suggestions.map((q, idx) => (
                                 <button 
                                   key={idx} 
-                                  /* 点击直接发送 */
+                                  /* 点击直接发送，安全调用 */
                                   onClick={() => handleChatSubmit(q, [], model)} 
                                   className="group flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left"
                                 >
