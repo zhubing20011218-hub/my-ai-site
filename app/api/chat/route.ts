@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型翻译字典 (🔴 修复：全部使用 -001 稳定版)
+// 1. 定义模型翻译字典
+// 🔴 修正：去掉所有后缀，只用最基础的官方名称，这是容错率最高的写法
 const MODEL_MAP: Record<string, string> = {
-  "fast": "gemini-1.5-flash-001",      // 极速版 (锁定为 001)
-  "pro": "gemini-1.5-pro-001",         // 专业版 (锁定为 001)
-  "thinking": "gemini-1.5-pro-001",    // 深度版 (暂时共用Pro)
+  "fast": "gemini-1.5-flash",
+  "pro": "gemini-1.5-pro",
+  "thinking": "gemini-1.5-pro",
 };
 
 export async function POST(req: NextRequest) {
@@ -20,11 +21,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 🔴 修复：默认值也锁死为 001
-    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash-001";
+    // 映射模型名称
+    // 🔴 修正：默认值也改为通用名
+    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash";
+
+    // 🖨️ 调试日志：这会打印在 Vercel 的 Logs 里面，帮我们要命的时候找原因
+    console.log(`[Debug] Requesting Model: ${targetModel}`);
 
     // 确定 API 地址
-    // 注意：如果您在 Vercel 部署，建议在 Vercel 环境变量里删掉 GEMINI_BASE_URL，直接走官方
     let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
@@ -38,7 +42,8 @@ export async function POST(req: NextRequest) {
       }
       if (m.content?.images && Array.isArray(m.content.images)) {
         m.content.images.forEach((img: string) => {
-          const base64Data = img.split(',')[1]; 
+          // 处理 Base64 图片
+          const base64Data = img.includes(',') ? img.split(',')[1] : img; 
           if (base64Data) {
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
           }
@@ -50,6 +55,8 @@ export async function POST(req: NextRequest) {
     // 3. 构造请求 URL
     const url = `${baseUrl}/v1beta/models/${targetModel}:streamGenerateContent?key=${apiKey}`;
 
+    console.log(`[Debug] Full URL (hidden key): ${url.replace(apiKey, 'HIDDEN')}`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,9 +65,18 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
         const errText = await response.text();
-        console.error("Gemini API Error:", errText);
-        // 返回详细错误
-        return NextResponse.json({ error: `Gemini API Error: ${response.status}`, details: errText }, { status: response.status });
+        console.error("[Error From Google]", errText);
+        
+        // 尝试解析错误信息，看是不是模型不存在
+        try {
+            const errJson = JSON.parse(errText);
+            return NextResponse.json({ 
+                error: `Gemini Error: ${response.status}`, 
+                message: errJson.error?.message || errText 
+            }, { status: response.status });
+        } catch (e) {
+            return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
+        }
     }
 
     // 4. 处理流式响应
@@ -99,6 +115,7 @@ export async function POST(req: NextRequest) {
     return new NextResponse(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 
   } catch (e: any) {
+    console.error("[Server Internal Error]", e);
     return NextResponse.json({ error: e.message || 'Server Error' }, { status: 500 });
   }
 }
