@@ -2,30 +2,59 @@
 
 import { useState, useRef } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText } from "lucide-react";
+import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText, Video, Image as ImageIcon, Box } from "lucide-react";
 
-// 1. 定义三种模型配置
-const MODELS = [
+// ✨✨✨ 1. 定义全平台模型配置 (新增了 Sora, Veo, Banana) ✨✨✨
+export const MODEL_OPTIONS = [
+  // --- 文本/多模态组 ---
   {
-    id: "fast", 
-    name: "极速版 (Fast)",
-    desc: "速度最快，适合闲聊、翻译、短文案",
+    id: "gemini-2.0-flash-exp", 
+    name: "Gemini 2.0 Flash",
+    desc: "全能选手，速度快，免费/低成本",
     icon: Zap,
-    color: "text-green-500",
-  },
-  {
-    id: "pro", 
-    name: "专业版 (Pro)",
-    desc: "能力均衡，适合写代码、分析文档",
-    icon: Star,
     color: "text-blue-500",
+    type: "text"
   },
   {
-    id: "thinking", 
-    name: "深度版 (Thinking)",
-    desc: "逻辑超强，适合数学、复杂推理",
-    icon: Brain,
+    id: "gemini-1.5-pro", 
+    name: "Gemini 1.5 Pro",
+    desc: "长文档分析，逻辑更强",
+    icon: Star,
     color: "text-purple-500",
+    type: "text"
+  },
+  {
+    id: "gemini-2.0-flash-thinking-exp", 
+    name: "Gemini Thinking",
+    desc: "深度思考模式 (Beta)",
+    icon: Brain,
+    color: "text-indigo-500",
+    type: "text"
+  },
+  // --- 视频/图像生成组 (高价值工具) ---
+  {
+    id: "sora-v1", 
+    name: "OpenAI Sora",
+    desc: "好莱坞级视频生成 (VIP专享)",
+    icon: Video,
+    color: "text-red-500",
+    type: "video" 
+  },
+  {
+    id: "veo-google", 
+    name: "Google Veo",
+    desc: "高清 1080p 视频生成",
+    icon: Video,
+    color: "text-green-500",
+    type: "video"
+  },
+  {
+    id: "banana-sdxl", 
+    name: "Banana SDXL",
+    desc: "极速绘图 (基于 Banana GPU)",
+    icon: ImageIcon,
+    color: "text-yellow-500",
+    type: "image"
   },
 ];
 
@@ -37,12 +66,13 @@ interface ChatInputProps {
 export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [selectedModelId, setSelectedModelId] = useState("fast");
+  // 默认选中第一个
+  const [selectedModelId, setSelectedModelId] = useState(MODEL_OPTIONS[0].id);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const currentModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
+  const currentModel = MODEL_OPTIONS.find(m => m.id === selectedModelId) || MODEL_OPTIONS[0];
 
   const handleSend = () => {
     if (!input.trim() && files.length === 0) return;
@@ -68,16 +98,14 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // --- 📎 点击上传逻辑 (已修复TS报错) ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = e.target.files; // ✨ 关键修复：先存到变量里
+    const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) {
       setFiles((prev) => [...prev, ...Array.from(selectedFiles)]);
     }
     if (fileInputRef.current) fileInputRef.current.value = ""; 
   };
 
-  // --- 📋 粘贴逻辑 ---
   const handlePaste = (e: React.ClipboardEvent) => {
     if (e.clipboardData.files.length > 0) {
       e.preventDefault();
@@ -99,7 +127,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
       )}
 
-      {/* 样式容器：去掉了 overflow-hidden，让菜单能显示 */}
       <div 
         className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200
           ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"}
@@ -121,7 +148,9 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         )}
 
         <TextareaAutosize
-          minRows={1} maxRows={8} placeholder="有问题尽管问我... (支持拖拽上传)"
+          minRows={1} maxRows={8} 
+          // ✨ 动态提示词：根据选择的工具变化
+          placeholder={currentModel.type === 'video' ? `描述画面细节，${currentModel.name} 将为您生成视频...` : `有问题尽管问我... (${currentModel.name})`}
           className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm focus:ring-0 focus:outline-none placeholder:text-gray-400 text-gray-800"
           value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} onPaste={handlePaste} disabled={disabled}
         />
@@ -145,8 +174,8 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               {showModelMenu && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowModelMenu(false)} />
-                  <div className="absolute bottom-12 left-0 z-50 w-64 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden p-1 animate-in slide-in-from-bottom-2 fade-in">
-                    {MODELS.map((model) => (
+                  <div className="absolute bottom-12 left-0 z-50 w-64 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden p-1 animate-in slide-in-from-bottom-2 fade-in max-h-[300px] overflow-y-auto">
+                    {MODEL_OPTIONS.map((model) => (
                       <button
                         key={model.id}
                         onClick={() => { setSelectedModelId(model.id); setShowModelMenu(false); }}
@@ -166,7 +195,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
       </div>
       
-      <div className="text-center text-[10px] text-gray-300 mt-3 font-mono">Eureka AI • Powered by Gemini Engine</div>
+      <div className="text-center text-[10px] text-gray-300 mt-3 font-mono">Eureka AI • Powered by Gemini, Sora & Veo</div>
     </div>
   );
 }
