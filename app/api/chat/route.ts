@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型翻译字典 (🔴 修复重点：去掉了报错的 -latest 后缀)
+// 1. 定义模型翻译字典 (🔴 修复：全部使用 -001 稳定版)
 const MODEL_MAP: Record<string, string> = {
-  "fast": "gemini-1.5-flash",        // 极速版 (官方标准名)
-  "pro": "gemini-1.5-pro",           // 专业版 (官方标准名)
-  "thinking": "gemini-1.5-pro",      // 深度版 (稳定起见，先用Pro)
+  "fast": "gemini-1.5-flash-001",      // 极速版 (锁定为 001)
+  "pro": "gemini-1.5-pro-001",         // 专业版 (锁定为 001)
+  "thinking": "gemini-1.5-pro-001",    // 深度版 (暂时共用Pro)
 };
 
 export async function POST(req: NextRequest) {
   try {
-    // 安全解析请求体
     const json = await req.json(); 
     const { messages, model } = json;
     
@@ -21,10 +20,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 翻译模型名称 (如果前端传来的名字不在字典里，就默认用 flash)
-    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash";
+    // 🔴 修复：默认值也锁死为 001
+    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash-001";
 
     // 确定 API 地址
+    // 注意：如果您在 Vercel 部署，建议在 Vercel 环境变量里删掉 GEMINI_BASE_URL，直接走官方
     let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
         const errText = await response.text();
         console.error("Gemini API Error:", errText);
-        // 返回详细错误给前端，方便调试
-        return NextResponse.json({ error: "Gemini API Error", details: errText }, { status: response.status });
+        // 返回详细错误
+        return NextResponse.json({ error: `Gemini API Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
     // 4. 处理流式响应
