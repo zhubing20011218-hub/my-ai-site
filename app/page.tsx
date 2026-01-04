@@ -559,6 +559,10 @@ export default function Home() {
 
       {/* Admin Support Dialog */}
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
+         
+         {/* ✅ 新增这行：给盲人阅读器看的标题 (sr-only表示视觉隐藏但机器能读) */}
+         <DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader>
+
          <div className="flex flex-col md:flex-row h-[600px]">
            <div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
              <h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3>

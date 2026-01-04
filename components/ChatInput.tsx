@@ -1,27 +1,27 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText } from "lucide-react";
 
-// 1. 定义三种模型配置 (前端展示用)
+// 1. 定义三种模型配置
 const MODELS = [
   {
-    id: "fast", // 对应 gemini-2.0-flash-exp
+    id: "fast", 
     name: "极速版 (Fast)",
     desc: "速度最快，适合闲聊、翻译、短文案",
     icon: Zap,
     color: "text-green-500",
   },
   {
-    id: "pro", // 对应 gemini-1.5-pro
+    id: "pro", 
     name: "专业版 (Pro)",
     desc: "能力均衡，适合写代码、分析文档",
     icon: Star,
     color: "text-blue-500",
   },
   {
-    id: "thinking", // 对应 gemini-2.0-flash-thinking
+    id: "thinking", 
     name: "深度版 (Thinking)",
     desc: "逻辑超强，适合数学、复杂推理",
     icon: Brain,
@@ -41,10 +41,11 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   
-  // 获取当前选中的模型对象
+  // ✨ 新增：文件上传的“遥控器”
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const currentModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
 
-  // 发送处理
   const handleSend = () => {
     if (!input.trim() && files.length === 0) return;
     onSend(input, files, selectedModelId);
@@ -52,7 +53,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     setFiles([]);
   };
 
-  // 键盘回车发送 (Shift+Enter 换行)
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -60,7 +60,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // --- 📂 拖拽文件核心逻辑 ---
+  // --- 📂 拖拽逻辑 ---
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -80,7 +80,17 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // --- 📋 粘贴图片/文件逻辑 ---
+  // --- 📎 点击上传逻辑 (修复点 1) ---
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files);
+      setFiles((prev) => [...prev, ...newFiles]);
+    }
+    // 清空 input 防止重复上传同名文件没反应
+    if (fileInputRef.current) fileInputRef.current.value = ""; 
+  };
+
+  // --- 📋 粘贴逻辑 ---
   const handlePaste = (e: React.ClipboardEvent) => {
     if (e.clipboardData.files.length > 0) {
       e.preventDefault();
@@ -89,45 +99,58 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // 移除文件
   const removeFile = (index: number) => {
     setFiles(files.filter((_, i) => i !== index));
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 relative">
-      {/* 拖拽时的蒙版提示 */}
+    <div className="w-full max-w-3xl mx-auto p-4 relative">
+      {/* 隐藏的文件输入框 (幕后黑手) */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileSelect} 
+        className="hidden" 
+        multiple 
+      />
+
+      {/* 拖拽提示层 */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-blue-500 border-dashed rounded-2xl flex items-center justify-center backdrop-blur-sm pointer-events-none">
+        <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-blue-500 border-dashed rounded-2xl flex items-center justify-center backdrop-blur-sm pointer-events-none mx-4 my-4">
           <p className="text-blue-600 font-bold text-lg">松开鼠标上传文件</p>
         </div>
       )}
 
+      {/* ✨ 修复点 2：样式大升级 
+         - focus-within:ring-2: 当内部任何元素被聚焦时，给整个大盒子加光环
+         - outline-none: 去掉输入框自己的丑边框
+      */}
       <div 
-        className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 ${
-          isDragging ? "border-blue-500" : "border-gray-200 focus-within:border-blue-400 focus-within:shadow-md"
-        }`}
+        className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 overflow-hidden
+          ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"}
+          focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500
+        `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* 1. 文件预览区域 (如果有文件) */}
+        {/* 文件预览区 */}
         {files.length > 0 && (
           <div className="flex gap-2 p-3 pb-0 overflow-x-auto">
             {files.map((file, i) => (
-              <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-24 h-24 flex flex-col items-center justify-center">
+              <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-20 h-20 flex flex-col items-center justify-center">
                 <button 
                   onClick={() => removeFile(i)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition shadow-sm"
+                  className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"
                 >
-                  <X size={12} />
+                  <X size={10} />
                 </button>
                 {file.type.startsWith("image/") ? (
                   <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" />
                 ) : (
-                  <div className="flex flex-col items-center text-gray-500 text-xs">
+                  <div className="flex flex-col items-center text-gray-400">
                     <FileText size={24} className="mb-1" />
-                    <span className="truncate w-20 text-center">{file.name}</span>
+                    <span className="text-[10px] truncate w-16 text-center">{file.name}</span>
                   </div>
                 )}
               </div>
@@ -135,12 +158,12 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           </div>
         )}
 
-        {/* 2. 自动长高输入框 */}
+        {/* 核心输入框 */}
         <TextareaAutosize
           minRows={1}
-          maxRows={8} // 最多显示8行，再多出滚动条
+          maxRows={8}
           placeholder="有问题尽管问我... (支持拖拽上传)"
-          className="w-full resize-none border-none bg-transparent px-4 py-3 focus:ring-0 text-gray-800 placeholder:text-gray-400"
+          className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm focus:ring-0 focus:outline-none placeholder:text-gray-400 text-gray-800"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -148,54 +171,54 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           disabled={disabled}
         />
 
-        {/* 3. 底部工具栏：模型选择 + 发送按钮 */}
+        {/* 底部工具栏 */}
         <div className="flex justify-between items-center px-2 pb-2">
-          <div className="flex items-center gap-2">
-            {/* 上传按钮 (备用) */}
-            <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition">
-              <Paperclip size={20} />
+          <div className="flex items-center gap-1">
+            {/* 📎 回形针按钮 (现在可以点击了！) */}
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition"
+              title="上传文件"
+            >
+              <Paperclip size={18} />
             </button>
 
-            {/* 🔥 核心：模型选择下拉菜单 🔥 */}
+            {/* 模型选择器 */}
             <div className="relative">
               <button
                 onClick={() => setShowModelMenu(!showModelMenu)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
+                className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition"
               >
                 <currentModel.icon size={14} className={currentModel.color} />
                 {currentModel.name}
                 <ChevronDown size={12} className="opacity-50" />
               </button>
 
-              {/* 弹出的菜单 */}
+              {/* 模型下拉菜单 */}
               {showModelMenu && (
                 <>
-                  {/* 点击外部关闭 */}
                   <div className="fixed inset-0 z-10" onClick={() => setShowModelMenu(false)} />
-                  
-                  <div className="absolute bottom-10 left-0 z-20 w-64 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                    <div className="p-1 bg-gray-50/50">
-                      {MODELS.map((model) => (
-                        <button
-                          key={model.id}
-                          onClick={() => {
-                            setSelectedModelId(model.id);
-                            setShowModelMenu(false);
-                          }}
-                          className={`w-full text-left flex items-start gap-3 p-2.5 rounded-lg transition ${
-                            selectedModelId === model.id ? "bg-white shadow-sm ring-1 ring-gray-200" : "hover:bg-gray-100"
-                          }`}
-                        >
-                          <div className={`mt-0.5 p-1.5 rounded-md bg-gray-50 ${model.color}`}>
-                            <model.icon size={16} />
-                          </div>
-                          <div>
-                            <div className="text-sm font-semibold text-gray-800">{model.name}</div>
-                            <div className="text-xs text-gray-500 mt-0.5">{model.desc}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                  <div className="absolute bottom-10 left-0 z-20 w-64 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden p-1 animate-in slide-in-from-bottom-2 fade-in">
+                    {MODELS.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          setSelectedModelId(model.id);
+                          setShowModelMenu(false);
+                        }}
+                        className={`w-full text-left flex items-start gap-3 p-2 rounded-lg transition ${
+                          selectedModelId === model.id ? "bg-gray-50 ring-1 ring-gray-200" : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className={`mt-0.5 p-1.5 rounded-md bg-white border shadow-sm ${model.color}`}>
+                          <model.icon size={16} />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-gray-800">{model.name}</div>
+                          <div className="text-[10px] text-gray-500 leading-tight mt-0.5">{model.desc}</div>
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </>
               )}
@@ -206,14 +229,18 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <button
             onClick={handleSend}
             disabled={(!input.trim() && files.length === 0) || disabled}
-            className="p-2 bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+            className={`p-2 rounded-xl transition-all duration-200 ${
+              (!input.trim() && files.length === 0) 
+                ? "bg-gray-100 text-gray-300 cursor-not-allowed" 
+                : "bg-black text-white hover:bg-gray-800 shadow-md active:scale-95"
+            }`}
           >
             <Send size={18} />
           </button>
         </div>
       </div>
       
-      <div className="text-center text-xs text-gray-300 mt-2">
+      <div className="text-center text-[10px] text-gray-300 mt-3 font-mono">
         Eureka AI • Powered by Gemini Engine
       </div>
     </div>
