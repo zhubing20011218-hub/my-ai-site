@@ -43,7 +43,6 @@ export async function POST(req: NextRequest) {
       const parts = [];
       if (typeof m.content === 'string') parts.push({ text: m.content });
       else if (m.content?.text) parts.push({ text: m.content.text });
-      // 这里的 image 处理保持原样
       if (m.content?.images && Array.isArray(m.content.images)) {
         m.content.images.forEach((img: string) => {
            const base64Data = img.includes(',') ? img.split(',')[1] : img; 
@@ -70,7 +69,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
-    // ✨✨✨ 修复核心：稳健的流式解析 ✨✨✨
+    // ✨✨✨ 终极流式解析：贪吃蛇算法 ✨✨✨
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader();
@@ -82,38 +81,34 @@ export async function POST(req: NextRequest) {
           const { done, value } = await reader.read();
           if (done) break;
           
-          // 1. 累积数据到缓冲区
+          // 1. 进食：把新数据加到缓存
           buffer += decoder.decode(value, { stream: true });
           
-          // 2. 只有遇到换行符才说明这一句发完了，才开始切分
-          // (Google 的流是按行发送 JSON 的，这是一个铁律)
-          let boundary = buffer.indexOf('\n');
-          
-          while (boundary !== -1) {
-            const line = buffer.slice(0, boundary).trim(); // 提取完整的一行
-            buffer = buffer.slice(boundary + 1); // 剩下的放回缓冲区等待下一次拼接
-            
-            if (line) {
-               try {
-                  // 处理 JSON 里的逗号/方括号，使其变成合法的 JSON 对象
-                  let cleanJson = line;
-                  if (cleanJson.startsWith(',')) cleanJson = cleanJson.slice(1);
-                  if (cleanJson.startsWith('[')) cleanJson = cleanJson.slice(1);
-                  if (cleanJson.endsWith(']')) cleanJson = cleanJson.slice(0, -1);
-                  if (cleanJson.endsWith(',')) cleanJson = cleanJson.slice(0, -1); // 结尾也可能有逗号
+          // 2. 消化：正则提取 "text": "..."
+          // 这个正则专门匹配 JSON 里的 text 字段值，兼容转义字符
+          const regex = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+          let match;
+          let lastIndex = 0;
 
-                  const json = JSON.parse(cleanJson);
-                  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-                  
-                  if (text) {
-                      controller.enqueue(new TextEncoder().encode(text));
-                  }
-               } catch (e) {
-                  // 解析失败的行通常是元数据，忽略即可，不会导致崩坏
-               }
-            }
-            // 继续找下一个换行符
-            boundary = buffer.indexOf('\n');
+          // 循环查找所有匹配项
+          while ((match = regex.exec(buffer)) !== null) {
+             const rawText = match[1];
+             // 记录这一口吃到哪里了
+             lastIndex = regex.lastIndex;
+
+             // 解码 (把 \n 变回换行，\uXXXX 变回中文)
+             try {
+                const text = JSON.parse(`"${rawText}"`);
+                controller.enqueue(new TextEncoder().encode(text));
+             } catch (e) {
+                // 如果解码失败，直接吐原文，总比不显示好
+                controller.enqueue(new TextEncoder().encode(rawText));
+             }
+          }
+
+          // 3. 排泄：切掉已经处理过的 buffer，只保留没处理完的尾巴
+          if (lastIndex > 0) {
+             buffer = buffer.slice(lastIndex);
           }
         }
         controller.close();
