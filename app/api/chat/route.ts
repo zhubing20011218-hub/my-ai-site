@@ -2,36 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型映射 (全面升级到 2.0)
-const MODEL_MAP: Record<string, string> = {
-  // 2026年了，让我们尝试更新的模型
-  "fast": "gemini-2.0-flash-exp", 
-  "pro": "gemini-2.0-flash-exp",   
-  "thinking": "gemini-2.0-flash-exp", 
-};
+// 强制使用目前唯一能通的 2.0 模型
+const MODEL_NAME = "gemini-2.0-flash-exp";
 
 export async function POST(req: NextRequest) {
-  let apiKey = "";
   try {
     const json = await req.json(); 
-    const { messages, model } = json;
-    
-    apiKey = process.env.GEMINI_API_KEY || "";
+    const { messages } = json;
+    const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 默认使用 2.0
-    const targetModel = MODEL_MAP[model] || "gemini-2.0-flash-exp";
+    // 确定 API 地址 (Vercel 直连 Google)
+    const baseUrl = 'https://generativelanguage.googleapis.com';
+    const url = `${baseUrl}/v1beta/models/${MODEL_NAME}:streamGenerateContent?key=${apiKey}`;
 
-    console.log(`[Debug] Trying to use model: ${targetModel}`);
+    console.log(`[Connecting] ${url.replace(apiKey, 'HIDDEN')}`);
 
-    // 确定 API 地址
-    let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
-    if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
-
-    // 2. 整理历史记录
+    // 整理历史记录
     const contents = messages.map((m: any) => {
       const parts = [];
       if (typeof m.content === 'string') {
@@ -50,9 +40,6 @@ export async function POST(req: NextRequest) {
       return { role: m.role === 'user' ? 'user' : 'model', parts: parts };
     });
 
-    // 3. 构造请求 URL
-    const url = `${baseUrl}/v1beta/models/${targetModel}:streamGenerateContent?key=${apiKey}`;
-
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,28 +48,11 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
         const errText = await response.text();
-        console.error("[Error From Google]", errText);
-
-        // 🚨【关键功能】如果报错 404，自动查询当前可用模型列表并打印！
-        if (response.status === 404) {
-            console.log("🚨 Model not found. Fetching available models list...");
-            try {
-                const listUrl = `${baseUrl}/v1beta/models?key=${apiKey}`;
-                const listResp = await fetch(listUrl);
-                const listData = await listResp.json();
-                console.log("📋 === AVAILABLE MODELS LIST (2026) === 📋");
-                // 只打印 name 字段，方便查看
-                console.log(listData.models?.map((m:any) => m.name) || listData);
-                console.log("==========================================");
-            } catch (listErr) {
-                console.error("Failed to list models", listErr);
-            }
-        }
-        
+        console.error("[Google Error]", errText);
         return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
-    // 4. 处理流式响应
+    // 4. 处理流式响应 (透视模式)
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader();
@@ -90,27 +60,39 @@ export async function POST(req: NextRequest) {
         const decoder = new TextDecoder();
         let buffer = '';
 
+        console.log("--- STREAM STARTED ---");
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          buffer += decoder.decode(value, { stream: true });
           
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; 
-          for (const line of lines) {
-             const trimmed = line.trim();
-             if (!trimmed) continue;
-             try {
-                let cleanJson = trimmed;
-                if (cleanJson.startsWith(',')) cleanJson = cleanJson.slice(1);
-                if (cleanJson.startsWith('[')) cleanJson = cleanJson.slice(1);
-                if (cleanJson.endsWith(']')) cleanJson = cleanJson.slice(0, -1);
-                const json = JSON.parse(cleanJson);
-                const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) controller.enqueue(new TextEncoder().encode(text));
-             } catch (e) {}
+          const chunk = decoder.decode(value, { stream: true });
+          // 🚨【关键】把原始数据打印出来，看看 2.0 到底长啥样！
+          console.log("[Raw Chunk]", chunk); 
+          
+          buffer += chunk;
+          
+          // 尝试更加暴力的解析方法 (正则提取)，防止 JSON 格式不兼容
+          // 2.0 有时候返回的数据很乱，我们直接抓取 "text": "..."
+          const matches = buffer.matchAll(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g);
+          for (const match of matches) {
+              const text = match[1];
+              if (text) {
+                  // 解码 unicode 字符 (比如 \n, \uXXXX)
+                  try {
+                      const decodedText = JSON.parse(`"${text}"`);
+                      controller.enqueue(new TextEncoder().encode(decodedText));
+                  } catch (e) {
+                      // 如果解码失败，直接发原文
+                      controller.enqueue(new TextEncoder().encode(text));
+                  }
+              }
           }
+          // 清空 buffer 防止重复处理 (这里简化处理，实际生产可能需要更复杂的 buffer 管理)
+          // 但为了测试 2.0，这招通常最有效
+          buffer = ""; 
         }
+        console.log("--- STREAM ENDED ---");
         controller.close();
       }
     });
