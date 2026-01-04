@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型翻译字典 (昵称 -> 官方大名)
+// 1. 定义模型翻译字典 (修改了这里！用了更精确的版本号)
 const MODEL_MAP: Record<string, string> = {
-  "fast": "gemini-1.5-flash",        // 极速版
-  "pro": "gemini-1.5-pro",           // 专业版
-  "thinking": "gemini-1.5-pro",      // 深度版 (暂时都用Pro，够强且稳定)
-  // 如果您想尝鲜 2.0，可以把上面改成 "gemini-2.0-flash-exp"
+  "fast": "gemini-1.5-flash-latest",     // 改成 -latest
+  "pro": "gemini-1.5-pro-latest",        // 改成 -latest
+  "thinking": "gemini-1.5-pro-latest",   // 深度版
 };
 
 export async function POST(req: NextRequest) {
@@ -19,11 +18,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // ✨✨✨ 关键修复：把 "fast" 翻译成 "gemini-1.5-flash" ✨✨✨
-    // 如果找不到对应的，就默认用 flash
-    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash";
+    // 翻译模型名称 (如果前端传来的名字不在字典里，就默认用 flash)
+    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash-latest";
 
-    // 确定 API 地址 (Vercel 会自动连通，或者走您配置的代理)
+    // 确定 API 地址
     let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
     if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
 
@@ -46,7 +44,7 @@ export async function POST(req: NextRequest) {
       return { role: m.role === 'user' ? 'user' : 'model', parts: parts };
     });
 
-    // 3. 构造请求 URL (使用翻译后的 targetModel)
+    // 3. 构造请求 URL
     const url = `${baseUrl}/v1beta/models/${targetModel}:streamGenerateContent?key=${apiKey}`;
 
     const response = await fetch(url, {
@@ -58,7 +56,6 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
         const errText = await response.text();
         console.error("Gemini API Error:", errText);
-        // 返回详细错误给前端，方便调试
         return NextResponse.json({ error: "Gemini API Error: Bad Request", details: errText }, { status: response.status });
     }
 
