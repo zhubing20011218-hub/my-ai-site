@@ -16,7 +16,7 @@ import ReactMarkdown from 'react-markdown'
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// ✅ [配置保留] 价格表
+// ✅ 模型定价表
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.0-flash-exp": 0.01,
   "gemini-1.5-pro": 0.05,
@@ -26,7 +26,7 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// ✅ [功能保留] 推荐问题组件
+// ✅ 推荐问题组件
 function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: string) => void }) {
   if (!content || typeof content !== 'string' || !content.includes("___RELATED___")) return null;
   try {
@@ -35,7 +35,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
     const questions = parts[1].split("|").map(q => q.trim()).filter(q => q.length > 0);
     if (questions.length === 0) return null;
     return (
-      <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-3 animate-in fade-in slide-in-from-top-1">
+      <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-3">
         <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase">
           <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 您可能感兴趣
         </div>
@@ -51,7 +51,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
-// ✅ [功能保留] 思维链组件
+// ✅ 思维链组件
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -67,7 +67,7 @@ function Thinking({ modelName }: { modelName: string }) {
     return () => clearInterval(interval);
   }, []);
   return (
-    <div className="flex gap-4 my-8 animate-in fade-in slide-in-from-bottom-3">
+    <div className="flex gap-4 my-8">
       <div className="w-9 h-9 bg-slate-900 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs">🧊</div>
       <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] p-5 shadow-sm w-full max-w-md">
         <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-3 mb-4"><Terminal size={10}/> <span>Eureka 使用 {modelName} 处理引擎</span></div>
@@ -77,7 +77,7 @@ function Thinking({ modelName }: { modelName: string }) {
   );
 }
 
-// ✅ [功能保留] 登录/注册组件
+// ✅ 登录/注册组件
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
   const [account, setAccount] = useState("");
@@ -149,8 +149,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-      <div className="flex items-center gap-3 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
-      <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px] animate-in zoom-in-95 duration-500">
+      <div className="flex items-center gap-3 mb-8"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
+      <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px]">
         <div className="text-left mb-6">
           {authMode === 'forgot' && <button onClick={()=>setAuthMode('login')} className="mb-2 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-xs font-bold"><ArrowLeft size={12}/> 返回登录</button>}
           <h2 className="text-2xl font-black text-slate-900">{title}</h2>
@@ -161,9 +161,9 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
           <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号 (仅限中国大陆)" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
           {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="短信验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
           <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder={authMode === 'login' ? "请输入密码" : "设置新密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
-          {(authMode === 'register' || authMode === 'forgot') && (<div className="relative group animate-in slide-in-from-top-2"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
+          {(authMode === 'register' || authMode === 'forgot') && (<div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
           {authMode === 'login' && (<div className="flex justify-end mt-1"><button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button></div>)}
-          {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1 animate-in slide-in-from-left-2"><AlertCircle size={12}/> {error}</div>}
+          {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1"><AlertCircle size={12}/> {error}</div>}
           {authMode === 'register' && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
           <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? "安全登录" : (authMode === 'register' ? "立即注册" : "重置密码"))}</Button>
         </form>
@@ -174,7 +174,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ [核心功能] 主程序
+// ✅ 主程序
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -206,7 +206,6 @@ export default function Home() {
   const [activeSessionUser, setActiveSessionUser] = useState<string|null>(null);
   const supportScrollRef = useRef<HTMLDivElement>(null);
 
-  // ✅ [辅助功能] 解析消息 (去除建议标记)
   const parseMessageContent = (content: any) => {
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
@@ -235,7 +234,6 @@ export default function Home() {
     if (savedTheme === 'dark') setIsDarkMode(true);
   }, []);
 
-  // ✅ [功能保留] 客服轮询
   useEffect(() => {
     let interval: any;
     if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) {
@@ -369,7 +367,7 @@ export default function Home() {
     } catch (e) { alert("网络错误"); return false; }
   };
 
-  // ✅ [保留] 旧发送逻辑 (给推荐问题按钮用)
+  // ✅ 旧发送逻辑 (保留给推荐问题按钮)
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
@@ -378,7 +376,7 @@ export default function Home() {
     setInput(""); setImages([]); setFile(null); 
   };
 
-  // ✅ [核心功能] 新发送逻辑 (处理权限 & 角色)
+  // ✅ 新发送逻辑 (处理权限 & 角色)
   const handleChatSubmit = async (
     text: string, 
     attachments: File[] = [], 
@@ -470,7 +468,7 @@ export default function Home() {
 
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-x-hidden`}>
-      {/* 顶部通告 */}
+      {/* ✅ [修复] 顶部欢迎语 */}
       <div className={`w-full py-2 text-center border-b transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
         <p className={`text-[11px] font-medium tracking-tight ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>欢迎来到Eureka，有问题可以 <a href="#" onClick={(e)=>{e.preventDefault(); setIsSupportOpen(true)}} className="text-blue-500 font-bold hover:underline mx-1">联系客服</a></p>
       </div>
@@ -492,7 +490,7 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Admin Panel (如果用户是 Admin 才显示) */}
+      {/* Admin Panel */}
       {user?.role === 'admin' && (
         <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
            <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
@@ -513,16 +511,90 @@ export default function Home() {
         </div>
       )}
 
-      {/* Admin Dialogs (Card & Support) */}
+      {/* Admin Cards Dialog */}
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
       <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader><div className="flex flex-col md:flex-row h-[600px]"><div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3><div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">{supportSessions.map(s => (<div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}><div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div><div className="text-[10px] truncate opacity-60">{s.last_message}</div></div>))}{supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}</div></div><div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">{activeSessionUser ? (<><div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">{supportMessages.map(m => (<div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div></div>))}<div ref={supportScrollRef} /></div><div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/><Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button></div></>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}</div></div></DialogContent></Dialog>
       <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
+
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-10 pb-32">
+        <div className="max-w-3xl mx-auto space-y-10">
+          
+          {/* ✅ [修复] 欢迎界面 & 大冰块 - 移除动画，强制高度，确保可见 */}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
+                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center text-5xl mb-8 shadow-2xl font-bold ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>
+                  🧊
+                </div>
+                <h2 className="text-4xl font-black mb-12 tracking-tight text-slate-800 dark:text-slate-100">
+                  有什么可以帮您的？
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
+                  {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => handleSend(null, txt)} 
+                      className={`flex items-center justify-center p-6 border rounded-3xl hover:border-slate-300 transition-all text-sm font-bold shadow-sm h-24 text-center leading-relaxed ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {txt}
+                    </button>
+                  ))}
+                </div>
+            </div>
+          )}
+
+          {messages.map((m, i) => {
+            const { cleanText, suggestions } = parseMessageContent(m.content);
+            return (
+              <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'}`}>
+                {m.role!=='user' && <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs font-bold ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>🧊</div>}
+                <div className="max-w-[85%] flex flex-col gap-2">
+                  <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user' ? (isDarkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-white border border-slate-100 text-slate-900')}`}>
+                    {m.role === 'user' && typeof m.content === 'object' ? (
+                      <div className="space-y-3 text-sm">
+                        {m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}
+                        <p className="leading-relaxed font-medium">{m.content.text}</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
+                          <ReactMarkdown>{cleanText}</ReactMarkdown>
+                        </div>
+                        {suggestions.length > 0 && (
+                          <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-2">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-1">
+                              <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 猜你想问
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {suggestions.map((q, idx) => (
+                                <button 
+                                  key={idx} 
+                                  onClick={() => handleChatSubmit(q, [], model)} 
+                                  className="group flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left"
+                                >
+                                  <span>{q}</span><ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50/10 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(cleanText); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
+                  </div>
+                </div>
+                {m.role==='user' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 shrink-0 font-black text-[10px] shadow-md ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>{user.nickname[0]}</div>}
+              </div>
+            );
+          })}
+          {isLoading && <Thinking modelName={model} />}
+          <div ref={scrollRef} className="h-4" />
+        </div>
+      </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-2 pt-10 z-10">
         <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
       </div>
 
-      {/* ✅ [功能保留] 用户侧客服悬浮球 */}
       {user?.role === 'user' && (
         <div className="fixed right-6 bottom-6 z-40">
             {!isSupportOpen ? (
@@ -557,10 +629,6 @@ export default function Home() {
             )}
         </div>
       )}
-
-      {/* ✅ [功能保留] 充值 & 详情弹窗 */}
-      <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className={`sm:max-w-md p-8 text-center rounded-[32px] shadow-2xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>充值</DialogTitle></DialogHeader><div className="w-16 h-16 bg-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-sm"><Coins size={32} className="text-white"/></div><h3 className="text-2xl font-black mb-4">充值</h3><div className={`flex p-1 rounded-2xl mb-8 text-[11px] font-black ${isDarkMode ? 'bg-slate-950' : 'bg-slate-100'}`}><button onClick={()=>setRechargeTab('card')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='card' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>卡密核销</button><button onClick={()=>setRechargeTab('online')} className={`flex-1 py-2 rounded-xl transition-all ${rechargeTab==='online' ? (isDarkMode ? 'bg-slate-800 shadow text-white' : 'bg-white shadow text-slate-900') : 'text-slate-500'}`}>在线支付</button></div>{rechargeTab === 'card' ? (<div className="space-y-4 animate-in fade-in duration-300"><Input id="card-input" placeholder="BOSS-XXXX-XXXX-XXXX" className={`text-center font-mono uppercase h-12 border-none text-base tracking-widest rounded-2xl ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`} /><Button onClick={redeemCard} className="w-full bg-blue-600 h-12 rounded-2xl font-black text-white shadow-xl border-none active:scale-95 transition-all">立即核销</Button></div>) : (<div className={`p-4 rounded-2xl border text-left ${isDarkMode ? 'bg-orange-900/20 border-orange-900/50 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'}`}><p className="text-[11px] font-bold">维护中，请使用卡密。</p></div>)}</DialogContent></Dialog>
-      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
     </div>
   );
 }
