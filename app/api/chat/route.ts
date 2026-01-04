@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型翻译字典 (修改了这里！用了更精确的版本号)
+// 1. 定义模型翻译字典 (🔴 修复重点：去掉了报错的 -latest 后缀)
 const MODEL_MAP: Record<string, string> = {
-  "fast": "gemini-1.5-flash-latest",     // 改成 -latest
-  "pro": "gemini-1.5-pro-latest",        // 改成 -latest
-  "thinking": "gemini-1.5-pro-latest",   // 深度版
+  "fast": "gemini-1.5-flash",        // 极速版 (官方标准名)
+  "pro": "gemini-1.5-pro",           // 专业版 (官方标准名)
+  "thinking": "gemini-1.5-pro",      // 深度版 (稳定起见，先用Pro)
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model } = await req.json();
+    // 安全解析请求体
+    const json = await req.json(); 
+    const { messages, model } = json;
+    
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 翻译模型名称 (如果前端传来的名字不在字典里，就默认用 flash)
-    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash-latest";
+    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash";
 
     // 确定 API 地址
     let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
@@ -56,7 +59,8 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
         const errText = await response.text();
         console.error("Gemini API Error:", errText);
-        return NextResponse.json({ error: "Gemini API Error: Bad Request", details: errText }, { status: response.status });
+        // 返回详细错误给前端，方便调试
+        return NextResponse.json({ error: "Gemini API Error", details: errText }, { status: response.status });
     }
 
     // 4. 处理流式响应
