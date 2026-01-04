@@ -197,6 +197,34 @@ export default function Home() {
   const [activeSessionUser, setActiveSessionUser] = useState<string|null>(null);
   const supportScrollRef = useRef<HTMLDivElement>(null);
 
+  // ✨✨✨ 1. 解析助手：分离文本和建议 JSON ✨✨✨
+  const parseMessageContent = (content: any) => {
+    // 1. 如果是混合对象（带图片的文件），只处理 text 字段
+    let rawText = typeof content === 'string' ? content : content.text;
+    if (!rawText) return { cleanText: '', suggestions: [] };
+
+    // 2. 定义分离暗号
+    const START_TAG = '<<<SUGGESTIONS_START>>>';
+    const END_TAG = '<<<SUGGESTIONS_END>>>';
+
+    // 3. 尝试分离
+    const parts = rawText.split(START_TAG);
+    const cleanText = parts[0]; // 暗号前面的都是正文
+    let suggestions: string[] = [];
+
+    // 4. 尝试提取 JSON
+    if (parts[1]) {
+      try {
+        const jsonStr = parts[1].split(END_TAG)[0];
+        suggestions = JSON.parse(jsonStr);
+      } catch (e) {
+        // 解析失败（比如流还没传完）就先不显示按钮
+      }
+    }
+
+    return { cleanText, suggestions };
+  };
+
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
     if(u) { const p = JSON.parse(u); setUser(p); syncUserData(p.id, p.role); }
@@ -489,8 +517,8 @@ export default function Home() {
         <div className="flex items-center gap-4">
            <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button>
            <Select value={model} onValueChange={(v) => v === "Gemini 3 Pro" ? setModel(v) : alert("正在维护中")}>
-              <SelectTrigger className={`w-40 h-8 border-none text-[10px] font-bold shadow-none focus:ring-0 ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-900'}`}><SelectValue /></SelectTrigger>
-              <SelectContent className={`rounded-xl shadow-xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-white'}`}><SelectItem value="Gemini 3 Pro">Gemini 3 Pro</SelectItem><SelectItem value="gpt">ChatGPT Plus</SelectItem><SelectItem value="sora">Sora</SelectItem><SelectItem value="nano">Nano Banana</SelectItem></SelectContent>
+             <SelectTrigger className={`w-40 h-8 border-none text-[10px] font-bold shadow-none focus:ring-0 ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-900'}`}><SelectValue /></SelectTrigger>
+             <SelectContent className={`rounded-xl shadow-xl border-none ${isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-white'}`}><SelectItem value="Gemini 3 Pro">Gemini 3 Pro</SelectItem><SelectItem value="gpt">ChatGPT Plus</SelectItem><SelectItem value="sora">Sora</SelectItem><SelectItem value="nano">Nano Banana</SelectItem></SelectContent>
            </Select>
            <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
              <DialogTrigger asChild><button className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}>{user.nickname[0].toUpperCase()}</button></DialogTrigger>
@@ -498,8 +526,8 @@ export default function Home() {
                <DialogHeader className="sr-only"><DialogTitle>个人中心</DialogTitle></DialogHeader>
                <div className={`p-6 flex flex-col items-center border-b ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold mb-3 shadow-lg ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><h2 className="text-xl font-black">ID: {user.nickname}</h2><p className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{user.account}</p><button onClick={handleLogout} className="text-xs text-slate-400 mt-4 flex items-center gap-1 hover:text-red-500 transition-colors"><LogOut size={12}/> 退出账户</button></div>
                <div className={`p-6 ${isDarkMode ? 'bg-slate-950/50' : 'bg-slate-50/50'}`}>
-                  <div className={`rounded-2xl p-5 border shadow-sm mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div>
-                  <div className="space-y-4"><div className="flex items-center gap-2 font-bold text-[10px] text-slate-500 uppercase tracking-widest"><History size={12}/> 记录</div><div className="max-h-[120px] overflow-y-auto space-y-2 pr-1 scrollbar-hide text-[11px]">{transactions.map(t=>(<div key={t.id} className={`flex justify-between p-2.5 rounded-xl border font-bold ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-100 text-slate-900'}`}><span>{t.description}</span><span className={t.type==='topup'?'text-green-600':'text-slate-500'}>${t.amount}</span></div>))}</div></div>
+                 <div className={`rounded-2xl p-5 border shadow-sm mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div>
+                 <div className="space-y-4"><div className="flex items-center gap-2 font-bold text-[10px] text-slate-500 uppercase tracking-widest"><History size={12}/> 记录</div><div className="max-h-[120px] overflow-y-auto space-y-2 pr-1 scrollbar-hide text-[11px]">{transactions.map(t=>(<div key={t.id} className={`flex justify-between p-2.5 rounded-xl border font-bold ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-100 text-slate-900'}`}><span>{t.description}</span><span className={t.type==='topup'?'text-green-600':'text-slate-500'}>${t.amount}</span></div>))}</div></div>
                </div>
              </DialogContent>
            </Dialog>
@@ -515,13 +543,13 @@ export default function Home() {
              <Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}} className="h-9 bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white rounded-xl text-[10px] font-black border-none transition-all flex items-center justify-center gap-2"><MessageCircle size={12}/> 客服中心</Button>
            </div>
            <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-              {adminUsers.map((u:any)=>(
-                <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
-                  <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
-                  <div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div>
-                  <Button onClick={() => openAdminDetail(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">使用详情</Button>
-                </div>
-              ))}
+             {adminUsers.map((u:any)=>(
+               <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
+                 <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
+                 <div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div>
+                 <Button onClick={() => openAdminDetail(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">使用详情</Button>
+               </div>
+             ))}
            </div>
            {/* ✨ 调试信息 */}
            <div className="mt-4 pt-2 border-t border-white/5 flex items-center gap-2 text-[9px] text-slate-500">
@@ -600,27 +628,61 @@ export default function Home() {
           {messages.length === 0 && (
             <div className="flex flex-col items-center py-10 text-center animate-in fade-in zoom-in duration-700"><div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl font-bold ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><h2 className="text-3xl font-black mb-10 tracking-tight">有什么可以帮您的？</h2><div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">{["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (<button key={idx} onClick={() => handleSend(null, txt)} className={`flex items-center justify-center p-6 border rounded-3xl hover:border-slate-300 transition-all text-sm font-bold shadow-sm h-24 text-center leading-relaxed ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}>{txt}</button>))}</div></div>
           )}
-          {messages.map((m, i) => (
-            <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'} animate-in fade-in`}>
-              {m.role!=='user' && <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs font-bold ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>🧊</div>}
-              <div className="max-w-[85%] flex flex-col gap-2">
-                <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user' ? (isDarkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-white border border-slate-100 text-slate-900')}`}>
-                  {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-3 text-sm">{m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}<p className="leading-relaxed font-medium">{m.content.text}</p></div>) : (
-                    <div>
-                      <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
-                        <ReactMarkdown>{typeof m.content === 'string' ? m.content.split("___RELATED___")[0] : m.content.text}</ReactMarkdown>
+          {messages.map((m, i) => {
+            // ✨ 1. 调用解析函数
+            const { cleanText, suggestions } = parseMessageContent(m.content);
+            
+            return (
+              <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'} animate-in fade-in`}>
+                {m.role!=='user' && <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs font-bold ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>🧊</div>}
+                <div className="max-w-[85%] flex flex-col gap-2">
+                  <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user' ? (isDarkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-white border border-slate-100 text-slate-900')}`}>
+                    
+                    {/* 用户消息渲染 */}
+                    {m.role === 'user' && typeof m.content === 'object' ? (
+                      <div className="space-y-3 text-sm">
+                        {m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}
+                        <p className="leading-relaxed font-medium">{m.content.text}</p>
                       </div>
-                      {m.role === 'assistant' && !isLoading && typeof m.content === 'string' && (
-                        <RelatedQuestions content={m.content} onAsk={(q) => handleSend(null, q)} />
-                      )}
-                    </div>
-                  )}
-                  {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50/10 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(typeof m.content === 'string' ? m.content : m.content.text); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
+                    ) : (
+                      /* ✨ 2. AI 消息渲染 (使用 cleanText) */
+                      <div>
+                        <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
+                          <ReactMarkdown>{cleanText}</ReactMarkdown>
+                        </div>
+
+                        {/* ✨ 3. 渲染建议按钮 (如果有建议，且不是 loading 状态) */}
+                        {suggestions.length > 0 && (
+                          <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-2 animate-in fade-in slide-in-from-top-1">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-1">
+                              <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 猜你想问
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {suggestions.map((q, idx) => (
+                                <button 
+                                  key={idx} 
+                                  /* 点击直接发送 */
+                                  onClick={() => handleChatSubmit(q, [], model)} 
+                                  className="group flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left"
+                                >
+                                  <span>{q}</span>
+                                  <ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 复制按钮 */}
+                    {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50/10 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(cleanText); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
+                  </div>
                 </div>
+                {m.role==='user' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 shrink-0 font-black text-[10px] shadow-md ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>{user.nickname[0]}</div>}
               </div>
-              {m.role==='user' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 shrink-0 font-black text-[10px] shadow-md ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>{user.nickname[0]}</div>}
-            </div>
-          ))}
+            );
+          })}
           {isLoading && <Thinking modelName={model} />}
           <div ref={scrollRef} className="h-4" />
         </div>
@@ -632,36 +694,36 @@ export default function Home() {
 
       {user?.role === 'user' && (
         <div className="fixed right-6 bottom-6 z-40">
-           {!isSupportOpen ? (
-             <button onClick={()=>setIsSupportOpen(true)} className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-in zoom-in slide-in-from-bottom-10">
-               <MessageCircle size={28} fill="currentColor" className="text-white"/>
-               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-             </button>
-           ) : (
-             <Card className={`w-80 h-[450px] shadow-2xl border-none flex flex-col rounded-[24px] overflow-hidden animate-in zoom-in slide-in-from-bottom-10 origin-bottom-right ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
-                <div className="p-4 bg-blue-600 text-white flex justify-between items-center shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">👩‍💼</div>
-                    <div><div className="font-bold text-sm">Eureka 官方客服</div><div className="text-[10px] opacity-80 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> 在线中</div></div>
-                  </div>
-                  <button onClick={()=>setIsSupportOpen(false)} className="opacity-80 hover:opacity-100"><X size={18}/></button>
-                </div>
-                <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                  <div className="text-center text-[10px] text-slate-400 my-2">- 官方客服已接入会话 -</div>
-                  {supportMessages.map(m => (
-                    <div key={m.id} className={`flex ${m.is_admin ? 'justify-start' : 'justify-end'}`}>
-                       {m.is_admin && <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold mr-2 mt-1">E</div>}
-                       <div className={`max-w-[80%] p-2.5 rounded-2xl text-xs font-medium shadow-sm leading-relaxed ${m.is_admin ? (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800') : 'bg-blue-600 text-white'}`}>{m.content}</div>
-                    </div>
-                  ))}
-                  <div ref={supportScrollRef} />
-                </div>
-                <div className={`p-3 border-t shrink-0 flex gap-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                   <Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="描述您的问题..." className="h-9 text-xs border-none bg-slate-100 dark:bg-slate-950"/>
-                   <Button onClick={sendSupportMessage} size="icon" className="h-9 w-9 bg-blue-600 rounded-xl"><Send size={14}/></Button>
-                </div>
-             </Card>
-           )}
+            {!isSupportOpen ? (
+              <button onClick={()=>setIsSupportOpen(true)} className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-in zoom-in slide-in-from-bottom-10">
+                <MessageCircle size={28} fill="currentColor" className="text-white"/>
+                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+              </button>
+            ) : (
+              <Card className={`w-80 h-[450px] shadow-2xl border-none flex flex-col rounded-[24px] overflow-hidden animate-in zoom-in slide-in-from-bottom-10 origin-bottom-right ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
+                 <div className="p-4 bg-blue-600 text-white flex justify-between items-center shrink-0">
+                   <div className="flex items-center gap-3">
+                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">👩‍💼</div>
+                     <div><div className="font-bold text-sm">Eureka 官方客服</div><div className="text-[10px] opacity-80 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> 在线中</div></div>
+                   </div>
+                   <button onClick={()=>setIsSupportOpen(false)} className="opacity-80 hover:opacity-100"><X size={18}/></button>
+                 </div>
+                 <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+                   <div className="text-center text-[10px] text-slate-400 my-2">- 官方客服已接入会话 -</div>
+                   {supportMessages.map(m => (
+                     <div key={m.id} className={`flex ${m.is_admin ? 'justify-start' : 'justify-end'}`}>
+                        {m.is_admin && <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold mr-2 mt-1">E</div>}
+                        <div className={`max-w-[80%] p-2.5 rounded-2xl text-xs font-medium shadow-sm leading-relaxed ${m.is_admin ? (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800') : 'bg-blue-600 text-white'}`}>{m.content}</div>
+                     </div>
+                   ))}
+                   <div ref={supportScrollRef} />
+                 </div>
+                 <div className={`p-3 border-t shrink-0 flex gap-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+                    <Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="描述您的问题..." className="h-9 text-xs border-none bg-slate-100 dark:bg-slate-950"/>
+                    <Button onClick={sendSupportMessage} size="icon" className="h-9 w-9 bg-blue-600 rounded-xl"><Send size={14}/></Button>
+                 </div>
+              </Card>
+            )}
         </div>
       )}
 
@@ -671,7 +733,7 @@ export default function Home() {
           <div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-bold">{tx.description}</span>
-              <span className="text-[10px] opacity-60 font-mono flex items-center gap-1"><FileText size={10}/> {tx.time}</span>
+              <span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span>
             </div>
             <span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span>
           </div>
