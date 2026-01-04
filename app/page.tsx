@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
+import ChatInput from "@/components/ChatInput"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -337,7 +338,7 @@ export default function Home() {
     } catch (e) { alert("网络错误"); return false; }
   };
 
-  // ✨✨✨ 核心修改点：发送逻辑升级 (支持 Excel/CSV) ✨✨✨
+// --- 1. 旧的发送逻辑 (保留这个！因为"相关问题"和"示例提示词"按钮还需要它) ---
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
@@ -354,16 +355,14 @@ export default function Home() {
     const ctrl = new AbortController(); abortRef.current = ctrl;
 
     // 2. 准备发送给 API 的数据
-    // 注意：历史记录只带文本，防止 Token 爆炸
     const apiMessages = messages.map(m => ({ role: m.role, content: typeof m.content === 'string' ? m.content : m.content.text }));
     
-    // 3. 将当前这条包含文件/图片/文字的完整信息加入队列
     apiMessages.push({ 
       role: 'user', 
       content: { 
         text: content, 
         images: [...images], 
-        file: file // 这里包含 { name, content(base64) }，后端需要它来解析 Excel
+        file: file 
       } 
     });
 
@@ -387,6 +386,93 @@ export default function Home() {
       } catch (err: any) { if(err.name !== 'AbortError') console.error(err); } 
       finally { setIsLoading(false); abortRef.current = null; }
     }, 1000); 
+  };
+
+  // --- 2. 新的发送逻辑 (专门给新版 ChatInput 使用) ---
+  // ✨ 这就是刚才没放对位置的那个函数 ✨
+  const handleChatSubmit = async (text: string, attachments: File[], modelId: string) => {
+    // 1. 映射模型 ID -> 具体的 API 模型名称
+    let apiModel = "gemini-2.0-flash-exp"; // 默认 Fast
+    if (modelId === "pro") apiModel = "gemini-1.5-pro";
+    else if (modelId === "thinking") apiModel = "gemini-2.0-flash-thinking-exp";
+    
+    setModel(apiModel); // 同步一下界面状态
+
+    // 2. 处理文件 (把 File 对象转为 API 需要的 Base64 格式)
+    const processedImages: string[] = [];
+    let processedFile: { name: string, content: string } | null = null;
+
+    for (const file of attachments) {
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      if (file.type.startsWith("image/")) {
+        processedImages.push(base64);
+      } else {
+        processedFile = { name: file.name, content: base64 };
+      }
+    }
+
+    // 3. 执行发送核心逻辑
+    const success = await handleTX('consume', 0.01, `使用 ${apiModel} 生成回答`);
+    if (!success) return;
+
+    // UI 显示
+    const uiContent = { 
+      text: text, 
+      images: processedImages, 
+      file: processedFile ? processedFile.name : null 
+    };
+    setMessages(prev => [...prev, { role: 'user', content: uiContent }]);
+    setIsLoading(true);
+    
+    // API 请求构造
+    const history = messages.map(m => ({
+      role: m.role,
+      content: typeof m.content === 'string' ? m.content : m.content.text
+    }));
+
+    history.push({
+      role: 'user',
+      content: {
+        text: text,
+        images: processedImages,
+        file: processedFile
+      }
+    });
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history, model: apiModel }),
+      });
+      
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+
+      while (true) {
+        const { done, value } = await reader?.read()!;
+        if (done) break;
+        const chunk = decoder.decode(value);
+        setMessages(prev => {
+          const newMsgs = [...prev];
+          const lastMsg = newMsgs[newMsgs.length - 1];
+          lastMsg.content += chunk; // 流式更新
+          return newMsgs;
+        });
+      }
+    } catch (e) {
+      console.error(e);
+      alert("发送失败，请重试");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
@@ -536,41 +622,8 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-4 sm:p-8 bg-gradient-to-t from-transparent via-transparent to-transparent">
-        <div className="max-w-3xl mx-auto">
-          {(images.length > 0 || file) && (
-            <div className={`flex flex-wrap gap-2 mb-4 animate-in slide-in-from-bottom-2 p-2 rounded-2xl border shadow-sm ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/50 backdrop-blur border-slate-100'}`}>{images.map((img,idx)=>(<div key={idx} className="relative w-12 h-12"><img src={img} className="w-full h-full object-cover rounded-xl border"/><button onClick={()=>setImages(p=>p.filter((_,i)=>i!==idx))} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 shadow-sm active:scale-90 transition-all"><X size={10}/></button></div>))}{file && (<div className="bg-white px-3 py-1.5 rounded-xl text-[10px] flex items-center gap-2 border border-slate-200 font-bold shadow-sm"><span>📄 {file.name}</span><button onClick={()=>setFile(null)} className="text-red-400 hover:text-red-500"><X size={12}/></button></div>)}</div>
-          )}
-          <div className={`relative shadow-2xl rounded-[32px] overflow-hidden border group focus-within:border-blue-500/50 transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-            {isLoading ? (<Button onClick={()=>abortRef.current?.abort()} className={`w-full h-14 rounded-none gap-2 font-black border-none transition-colors ${isDarkMode ? 'bg-slate-900 text-slate-400 hover:bg-slate-800' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}><Square size={14} fill="currentColor"/> 停止生成</Button>) : (
-              <form onSubmit={handleSend} className="flex items-center p-2">
-                {/* ✨✨✨ 核心修改：文件上传 Input 升级 (支持 Excel/CSV 读取为 DataURL) ✨✨✨ */}
-                <input type="file" ref={fileInputRef} hidden multiple accept="image/*,.xlsx,.csv,.txt,.md" onChange={(e)=>{
-                  const fs = Array.from(e.target.files as FileList); 
-                  if (fs.length === 0) return;
-                  const f = fs[0];
-                  const r = new FileReader();
-                  
-                  // 统一使用 DataURL 读取 (适配所有文件类型)
-                  r.onloadend = () => {
-                    if (f.type.startsWith('image/')) {
-                      setImages(p => [...p, r.result as string]);
-                    } else {
-                      // 将文件对象存入 state (包含 Base64 内容)
-                      setFile({ name: f.name, content: r.result as string }); 
-                    }
-                  };
-                  r.readAsDataURL(f);
-                }} />
-                
-                <Button type="button" variant="ghost" size="icon" onClick={()=>fileInputRef.current?.click()} className="text-slate-400 h-11 w-11 ml-2 rounded-full hover:bg-blue-600/10 hover:text-blue-600 transition-all"><Paperclip size={22}/></Button>
-                <Input value={input} onChange={e=>setInput(e.target.value)} className={`flex-1 bg-transparent border-none focus-visible:ring-0 shadow-none text-sm px-4 h-14 font-medium ${isDarkMode ? 'text-slate-200 placeholder:text-slate-600' : 'text-slate-900 placeholder:text-slate-400'}`} placeholder="有问题尽管问我... "/>
-                <Button type="submit" disabled={!input.trim() && images.length===0 && !file} className={`h-11 w-11 mr-1 rounded-full p-0 flex items-center justify-center transition-all shadow-lg active:scale-90 border-none ${isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-slate-900 text-white hover:bg-blue-600'}`}><Send size={20} /></Button>
-              </form>
-            )}
-          </div>
-          <p className={`text-[9px] text-center mt-4 font-black uppercase tracking-widest opacity-60 ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>Eureka Site · Powered by Gemini Engine</p>
-        </div>
+      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-2 pt-10 z-10">
+        <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
       </div>
 
       {user?.role === 'user' && (
