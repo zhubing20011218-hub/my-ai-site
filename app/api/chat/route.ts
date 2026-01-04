@@ -5,6 +5,27 @@ export const runtime = 'edge';
 // 强制使用目前唯一能通的 2.0 模型
 const MODEL_NAME = "gemini-2.0-flash-exp";
 
+// ✨✨✨ 核心升级：注入灵魂与人设 ✨✨✨
+const SYSTEM_INSTRUCTION = `
+你叫 Eureka，是一个温暖、幽默、非常有亲和力的 AI 伙伴，而不是冷冰冰的机器。
+请遵循以下原则：
+1. **语气风格**：
+   - 说话要像老朋友一样自然、活泼。
+   - 适当使用 Emoji (✨🚀😄) 来增加情感色彩。
+   - 拒绝官腔，拒绝教科书式的说教。
+   - 如果用户心情不好，要给予共情和安慰。
+
+2. **建议胶囊 (Suggestions)**：
+   - 在每次回答的最后，**必须**根据上下文生成 3 个用户可能感兴趣的后续问题或行动。
+   - **格式要求**：请严格按照下方格式输出，方便用户阅读：
+     
+     ---
+     💡 **猜你想问**：
+     1. [建议问题1]
+     2. [建议问题2]
+     3. [建议问题3]
+`;
+
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json(); 
@@ -15,7 +36,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 确定 API 地址 (Vercel 直连 Google)
     const baseUrl = 'https://generativelanguage.googleapis.com';
     const url = `${baseUrl}/v1beta/models/${MODEL_NAME}:streamGenerateContent?key=${apiKey}`;
 
@@ -40,10 +60,18 @@ export async function POST(req: NextRequest) {
       return { role: m.role === 'user' ? 'user' : 'model', parts: parts };
     });
 
+    // ✨ 在请求中带上系统指令 (System Instruction)
+    const body = {
+      systemInstruction: {
+        parts: [{ text: SYSTEM_INSTRUCTION }]
+      },
+      contents: contents
+    };
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: contents }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -52,7 +80,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
-    // 4. 处理流式响应 (透视模式)
+    // 处理流式响应 (保持之前的正则解析逻辑，因为它很稳)
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader();
@@ -60,39 +88,27 @@ export async function POST(req: NextRequest) {
         const decoder = new TextDecoder();
         let buffer = '';
 
-        console.log("--- STREAM STARTED ---");
-
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           
           const chunk = decoder.decode(value, { stream: true });
-          // 🚨【关键】把原始数据打印出来，看看 2.0 到底长啥样！
-          console.log("[Raw Chunk]", chunk); 
-          
           buffer += chunk;
           
-          // 尝试更加暴力的解析方法 (正则提取)，防止 JSON 格式不兼容
-          // 2.0 有时候返回的数据很乱，我们直接抓取 "text": "..."
           const matches = buffer.matchAll(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g);
           for (const match of matches) {
               const text = match[1];
               if (text) {
-                  // 解码 unicode 字符 (比如 \n, \uXXXX)
                   try {
                       const decodedText = JSON.parse(`"${text}"`);
                       controller.enqueue(new TextEncoder().encode(decodedText));
                   } catch (e) {
-                      // 如果解码失败，直接发原文
                       controller.enqueue(new TextEncoder().encode(text));
                   }
               }
           }
-          // 清空 buffer 防止重复处理 (这里简化处理，实际生产可能需要更复杂的 buffer 管理)
-          // 但为了测试 2.0，这招通常最有效
           buffer = ""; 
         }
-        console.log("--- STREAM ENDED ---");
         controller.close();
       }
     });
