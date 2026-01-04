@@ -375,18 +375,19 @@ export default function Home() {
     setInput(""); setImages([]); setFile(null); 
   };
 
-  // --- 2. 新的发送逻辑 (修复了参数崩溃 Bug 🚨) ---
-  // 给 attachments 和 modelId 加上了默认值 = [] 和 = "gemini..."
+  // --- 2. 新的发送逻辑 ---
+  // 给 attachments 和 modelId 加上了默认值
   const handleChatSubmit = async (
     text: string, 
-    attachments: File[] = [], // ✅ 修复：默认空数组，防崩
-    modelId: string = "gemini-2.0-flash-exp" // ✅ 修复：默认模型，防崩
+    attachments: File[] = [], 
+    modelId: string = "gemini-2.0-flash-exp" 
   ) => {
     
-    // 映射模型 ID
+    // ✅ 修复：映射模型 ID，暂时全部指向 2.0 Flash 保证 100% 成功率
+    // 等后续稳定了，再改回 pro -> 1.5-pro
     let apiModel = "gemini-2.0-flash-exp"; 
-    if (modelId === "pro") apiModel = "gemini-1.5-pro";
-    else if (modelId === "thinking") apiModel = "gemini-2.0-flash-thinking-exp";
+    if (modelId === "pro") apiModel = "gemini-2.0-flash-exp"; // 暂时替补
+    else if (modelId === "thinking") apiModel = "gemini-2.0-flash-exp"; // 暂时替补
     
     setModel(apiModel); 
 

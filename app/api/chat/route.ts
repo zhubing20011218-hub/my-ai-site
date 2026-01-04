@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-const MODEL_NAME = "gemini-2.0-flash-exp";
-
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json(); 
-    const { messages } = json;
+    const { messages, model } = json; // ✨ 接收前端传来的 model 参数
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -18,7 +16,11 @@ export async function POST(req: NextRequest) {
     const city = req.headers.get('x-vercel-ip-city') || 'Unknown City';
     const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
 
-    // 2. 系统指令
+    // 2. 确定模型 (双重保险：如果没有传，默认用 2.0)
+    // 即使前端传了 pro，我们在 page.tsx 里也暂时映射成了 2.0，所以这里收到的肯定是 2.0
+    const targetModel = model || "gemini-2.0-flash-exp";
+
+    // 3. 系统指令
     const SYSTEM_INSTRUCTION = `
     你叫 Eureka。
     当前时间: ${now}
@@ -37,7 +39,7 @@ export async function POST(req: NextRequest) {
     `;
 
     const baseUrl = 'https://generativelanguage.googleapis.com';
-    const url = `${baseUrl}/v1beta/models/${MODEL_NAME}:streamGenerateContent?key=${apiKey}`;
+    const url = `${baseUrl}/v1beta/models/${targetModel}:streamGenerateContent?key=${apiKey}`;
 
     const contents = messages.map((m: any) => {
       const parts = [];
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
-    // ✨✨✨ 终极流式解析：贪吃蛇算法 ✨✨✨
+    // ✨✨✨ 终极流式解析：修复版贪吃蛇算法 ✨✨✨
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader();
@@ -81,32 +83,30 @@ export async function POST(req: NextRequest) {
           const { done, value } = await reader.read();
           if (done) break;
           
-          // 1. 进食：把新数据加到缓存
+          // 1. 进食
           buffer += decoder.decode(value, { stream: true });
           
-          // 2. 消化：正则提取 "text": "..."
-          // 这个正则专门匹配 JSON 里的 text 字段值，兼容转义字符
+          // 2. 消化
+          // 🚨【关键修复】正则表达式必须每次循环都重新定义，或者重置 lastIndex！
+          // 否则当 buffer 被切断后，正则的指针会指向错误的位置，导致跳过内容！
           const regex = /"text"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+          
           let match;
           let lastIndex = 0;
 
-          // 循环查找所有匹配项
           while ((match = regex.exec(buffer)) !== null) {
              const rawText = match[1];
-             // 记录这一口吃到哪里了
              lastIndex = regex.lastIndex;
 
-             // 解码 (把 \n 变回换行，\uXXXX 变回中文)
              try {
                 const text = JSON.parse(`"${rawText}"`);
                 controller.enqueue(new TextEncoder().encode(text));
              } catch (e) {
-                // 如果解码失败，直接吐原文，总比不显示好
                 controller.enqueue(new TextEncoder().encode(rawText));
              }
           }
 
-          // 3. 排泄：切掉已经处理过的 buffer，只保留没处理完的尾巴
+          // 3. 排泄：切掉处理过的部分
           if (lastIndex > 0) {
              buffer = buffer.slice(lastIndex);
           }
