@@ -2,31 +2,30 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// 1. 定义模型翻译字典
-// 🔴 修正：去掉所有后缀，只用最基础的官方名称，这是容错率最高的写法
+// 1. 定义模型映射 (全面升级到 2.0)
 const MODEL_MAP: Record<string, string> = {
-  "fast": "gemini-1.5-flash",
-  "pro": "gemini-1.5-pro",
-  "thinking": "gemini-1.5-pro",
+  // 2026年了，让我们尝试更新的模型
+  "fast": "gemini-2.0-flash-exp", 
+  "pro": "gemini-2.0-flash-exp",   
+  "thinking": "gemini-2.0-flash-exp", 
 };
 
 export async function POST(req: NextRequest) {
+  let apiKey = "";
   try {
     const json = await req.json(); 
     const { messages, model } = json;
     
-    const apiKey = process.env.GEMINI_API_KEY;
+    apiKey = process.env.GEMINI_API_KEY || "";
 
     if (!apiKey) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 映射模型名称
-    // 🔴 修正：默认值也改为通用名
-    const targetModel = MODEL_MAP[model] || "gemini-1.5-flash";
+    // 默认使用 2.0
+    const targetModel = MODEL_MAP[model] || "gemini-2.0-flash-exp";
 
-    // 🖨️ 调试日志：这会打印在 Vercel 的 Logs 里面，帮我们要命的时候找原因
-    console.log(`[Debug] Requesting Model: ${targetModel}`);
+    console.log(`[Debug] Trying to use model: ${targetModel}`);
 
     // 确定 API 地址
     let baseUrl = process.env.GEMINI_BASE_URL || 'https://generativelanguage.googleapis.com';
@@ -42,7 +41,6 @@ export async function POST(req: NextRequest) {
       }
       if (m.content?.images && Array.isArray(m.content.images)) {
         m.content.images.forEach((img: string) => {
-          // 处理 Base64 图片
           const base64Data = img.includes(',') ? img.split(',')[1] : img; 
           if (base64Data) {
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
@@ -55,8 +53,6 @@ export async function POST(req: NextRequest) {
     // 3. 构造请求 URL
     const url = `${baseUrl}/v1beta/models/${targetModel}:streamGenerateContent?key=${apiKey}`;
 
-    console.log(`[Debug] Full URL (hidden key): ${url.replace(apiKey, 'HIDDEN')}`);
-
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -66,17 +62,24 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
         const errText = await response.text();
         console.error("[Error From Google]", errText);
-        
-        // 尝试解析错误信息，看是不是模型不存在
-        try {
-            const errJson = JSON.parse(errText);
-            return NextResponse.json({ 
-                error: `Gemini Error: ${response.status}`, 
-                message: errJson.error?.message || errText 
-            }, { status: response.status });
-        } catch (e) {
-            return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
+
+        // 🚨【关键功能】如果报错 404，自动查询当前可用模型列表并打印！
+        if (response.status === 404) {
+            console.log("🚨 Model not found. Fetching available models list...");
+            try {
+                const listUrl = `${baseUrl}/v1beta/models?key=${apiKey}`;
+                const listResp = await fetch(listUrl);
+                const listData = await listResp.json();
+                console.log("📋 === AVAILABLE MODELS LIST (2026) === 📋");
+                // 只打印 name 字段，方便查看
+                console.log(listData.models?.map((m:any) => m.name) || listData);
+                console.log("==========================================");
+            } catch (listErr) {
+                console.error("Failed to list models", listErr);
+            }
         }
+        
+        return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
     // 4. 处理流式响应
