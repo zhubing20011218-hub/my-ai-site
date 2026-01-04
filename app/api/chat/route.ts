@@ -18,14 +18,14 @@ export async function POST(req: NextRequest) {
     const city = req.headers.get('x-vercel-ip-city') || 'Unknown City';
     const now = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
 
-    // 2. 系统指令：精准控制排版和建议
+    // 2. 系统指令
     const SYSTEM_INSTRUCTION = `
     你叫 Eureka。
     当前时间: ${now}
     用户位置: ${city} (如问天气请查此地)
 
     【回答规范】
-    1. **拒绝重复**：回答要干脆利落，不要把查到的数据堆砌在最后。
+    1. **拒绝重复**：回答要干脆利落。
     2. **排版整洁**：使用列表和加粗，禁止使用复杂的 Markdown 表格。
     3. **猜你想问**：
        - 请在回答的最后，生成 3 个后续问题。
@@ -35,7 +35,6 @@ export async function POST(req: NextRequest) {
        ["问题1", "问题2", "问题3"]
        <<<SUGGESTIONS_END>>>
     `;
-    // 注意：上面我用了一个特殊标记，为下一步做“点击按钮”做准备！
 
     const baseUrl = 'https://generativelanguage.googleapis.com';
     const url = `${baseUrl}/v1beta/models/${MODEL_NAME}:streamGenerateContent?key=${apiKey}`;
@@ -44,13 +43,20 @@ export async function POST(req: NextRequest) {
       const parts = [];
       if (typeof m.content === 'string') parts.push({ text: m.content });
       else if (m.content?.text) parts.push({ text: m.content.text });
+      // 这里的 image 处理保持原样
+      if (m.content?.images && Array.isArray(m.content.images)) {
+        m.content.images.forEach((img: string) => {
+           const base64Data = img.includes(',') ? img.split(',')[1] : img; 
+           if(base64Data) parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
+        });
+      }
       return { role: m.role === 'user' ? 'user' : 'model', parts: parts };
     });
 
     const body = {
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents: contents,
-      tools: [{ google_search: {} }] // 保持联网能力
+      tools: [{ google_search: {} }] 
     };
 
     const response = await fetch(url, {
@@ -64,6 +70,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Gemini Error: ${response.status}`, details: errText }, { status: response.status });
     }
 
+    // ✨✨✨ 修复核心：稳健的流式解析 ✨✨✨
     const stream = new ReadableStream({
       async start(controller) {
         const reader = response.body?.getReader();
@@ -74,35 +81,39 @@ export async function POST(req: NextRequest) {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+          
+          // 1. 累积数据到缓冲区
           buffer += decoder.decode(value, { stream: true });
           
-          // ✨✨✨ 修复核心：精准解析 JSON，拒绝乱码 ✨✨✨
-          // Gemini 的流是按行发送 JSON 对象的，我们按行解析
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 保留未完成的行
+          // 2. 只有遇到换行符才说明这一句发完了，才开始切分
+          // (Google 的流是按行发送 JSON 的，这是一个铁律)
+          let boundary = buffer.indexOf('\n');
+          
+          while (boundary !== -1) {
+            const line = buffer.slice(0, boundary).trim(); // 提取完整的一行
+            buffer = buffer.slice(boundary + 1); // 剩下的放回缓冲区等待下一次拼接
+            
+            if (line) {
+               try {
+                  // 处理 JSON 里的逗号/方括号，使其变成合法的 JSON 对象
+                  let cleanJson = line;
+                  if (cleanJson.startsWith(',')) cleanJson = cleanJson.slice(1);
+                  if (cleanJson.startsWith('[')) cleanJson = cleanJson.slice(1);
+                  if (cleanJson.endsWith(']')) cleanJson = cleanJson.slice(0, -1);
+                  if (cleanJson.endsWith(',')) cleanJson = cleanJson.slice(0, -1); // 结尾也可能有逗号
 
-          for (const line of lines) {
-             const trimmed = line.trim();
-             if (!trimmed) continue;
-             
-             // 清理 JSON 格式标记 ([, ])
-             let cleanJson = trimmed;
-             if (cleanJson.startsWith(',')) cleanJson = cleanJson.slice(1);
-             if (cleanJson.startsWith('[')) cleanJson = cleanJson.slice(1);
-             if (cleanJson.endsWith(']')) cleanJson = cleanJson.slice(0, -1);
-             if (cleanJson.endsWith(',')) cleanJson = cleanJson.slice(0, -1);
-
-             try {
-                const json = JSON.parse(cleanJson);
-                // 🎯 只提取 candidates 里的 text (这是 AI 对用户说的话)
-                // 🚫 坚决不提取 groundingMetadata 或 tool 里的 text (那是原始数据)
-                const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) {
-                    controller.enqueue(new TextEncoder().encode(text));
-                }
-             } catch (e) {
-                // 忽略解析错误的行
-             }
+                  const json = JSON.parse(cleanJson);
+                  const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                  
+                  if (text) {
+                      controller.enqueue(new TextEncoder().encode(text));
+                  }
+               } catch (e) {
+                  // 解析失败的行通常是元数据，忽略即可，不会导致崩坏
+               }
+            }
+            // 继续找下一个换行符
+            boundary = buffer.indexOf('\n');
           }
         }
         controller.close();
