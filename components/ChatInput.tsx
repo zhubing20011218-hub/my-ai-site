@@ -45,7 +45,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const currentRole = ROLE_OPTIONS.find(r => r.id === selectedRoleId) || ROLE_OPTIONS[0];
 
   const handleSend = () => {
-    if (!input.trim() && files.length === 0) return;
+    if ((!input.trim() && files.length === 0) || disabled) return;
     onSend(input, files, selectedModelId, selectedRoleId);
     setInput("");
     setFiles([]);
@@ -58,6 +58,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
+  // --- 拖拽处理 ---
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
@@ -66,55 +67,101 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
       setFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
     }
   };
+
+  // --- 文件选择处理 ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) setFiles((prev) => [...prev, ...Array.from(selectedFiles)]);
     if (fileInputRef.current) fileInputRef.current.value = ""; 
   };
+
+  // ✅ [增强版] 粘贴处理：支持截图、图片、文件
   const handlePaste = (e: React.ClipboardEvent) => {
-    if (e.clipboardData.files.length > 0) {
-      e.preventDefault();
-      setFiles((prev) => [...prev, ...Array.from(e.clipboardData.files)]);
+    // 1. 优先检查 clipboardData.items (处理截图的关键)
+    const items = e.clipboardData.items;
+    const pastedFiles: File[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].kind === 'file') {
+            const file = items[i].getAsFile();
+            if (file) pastedFiles.push(file);
+        }
     }
+
+    // 2. 只有当粘贴板里确实包含文件时，才阻止默认行为并添加到列表
+    if (pastedFiles.length > 0) {
+        e.preventDefault(); // 阻止把文件名粘贴进输入框
+        setFiles((prev) => [...prev, ...pastedFiles]);
+    }
+    // 3. 如果只是普通文字，什么都不做，让 Textarea 自动处理
   };
+
   const removeFile = (index: number) => {
     setFiles(files.filter((_, i) => i !== index));
   };
 
   return (
     <div className="w-full max-w-3xl mx-auto p-4 relative">
-      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" multiple />
+      {/* ✅ [升级] 增加 accept 属性，支持更多文档格式 */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileSelect} 
+        className="hidden" 
+        multiple 
+        accept="image/*,.txt,.md,.csv,.json,.js,.py,.docx,.pdf" 
+      />
 
+      {/* 拖拽遮罩层 */}
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-blue-500 border-dashed rounded-2xl flex items-center justify-center backdrop-blur-sm pointer-events-none mx-4 my-4">
-          <p className="text-blue-600 font-bold text-lg">松开鼠标上传文件</p>
+          <p className="text-blue-600 font-bold text-lg animate-pulse">松开鼠标上传文件</p>
         </div>
       )}
 
-      <div className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"} focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500`}>
+      <div 
+        className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"} focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        {/* 文件预览区域 */}
         {files.length > 0 && (
           <div className="flex gap-2 p-3 pb-0 overflow-x-auto">
             {files.map((file, i) => (
-              <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-20 h-20 flex flex-col items-center justify-center">
+              <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-20 h-20 flex flex-col items-center justify-center overflow-hidden">
                 <button onClick={() => removeFile(i)} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"><X size={10} /></button>
-                {file.type.startsWith("image/") ? <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" /> : <div className="flex flex-col items-center text-gray-400"><FileText size={24} className="mb-1" /><span className="text-[10px] truncate w-16 text-center">{file.name}</span></div>}
+                {file.type.startsWith("image/") ? (
+                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" />
+                ) : (
+                    <div className="flex flex-col items-center text-gray-400 w-full">
+                        <FileText size={24} className="mb-1 text-blue-400" />
+                        <span className="text-[9px] truncate w-full text-center px-1">{file.name}</span>
+                    </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
+        {/* 输入框 */}
         <TextareaAutosize
           minRows={1} maxRows={8} 
           placeholder={currentRole.hint}
           className="w-full resize-none border-none bg-transparent px-4 py-3 text-sm focus:ring-0 focus:outline-none placeholder:text-gray-400 text-gray-800"
-          value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} onPaste={handlePaste} disabled={disabled}
+          value={input} 
+          onChange={(e) => setInput(e.target.value)} 
+          onKeyDown={handleKeyDown} 
+          onPaste={handlePaste} 
+          disabled={disabled}
         />
 
+        {/* 底部工具栏 */}
         <div className="flex justify-between items-center px-2 pb-2">
           <div className="flex items-center gap-1">
             <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" title="上传文件"><Paperclip size={18} /></button>
 
-            {/* ✅ [功能保留] 角色选择器 */}
+            {/* 角色选择器 */}
             <div className="relative">
               <button onClick={() => setShowRoleMenu(!showRoleMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-lg transition">
                 <currentRole.icon size={14} className={currentRole.color} />
@@ -135,7 +182,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               )}
             </div>
 
-            {/* ✅ [功能保留] 模型选择器 */}
+            {/* 模型选择器 */}
             <div className="relative">
               <button onClick={() => setShowModelMenu(!showModelMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition">
                 <currentModel.icon size={14} />

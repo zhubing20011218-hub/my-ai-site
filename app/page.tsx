@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import ChatInput from "@/components/ChatInput"
+import ChatInput from "@/components/ChatInput" // 确保这里引用的是你刚才修改过的那个新组件
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { 
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2
+  Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -173,7 +173,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ [修改版] 主程序：包含侧边栏和记忆功能
+// ✅ [完整修正版] 主程序：包含侧边栏、隐私修复、用户头像、多模态发送
 export default function Home() {
   // --- 🆕 记忆与侧边栏状态 ---
   const [user, setUser] = useState<any>(null);
@@ -186,11 +186,9 @@ export default function Home() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [input, setInput] = useState("");
+  // const [input, setInput] = useState(""); // ❌ 移除：输入状态交给了 ChatInput 组件管理
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("gemini-2.0-flash-exp");
-  const [images, setImages] = useState<string[]>([]);
-  const [file, setFile] = useState<{name:string, content:string} | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
@@ -234,7 +232,7 @@ export default function Home() {
     if (savedTheme === 'dark') setIsDarkMode(true);
     
     // 移动端自动收起侧边栏
-    if (window.innerWidth < 768) setIsSidebarOpen(false);
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
   // --- 🆕 记忆功能核心逻辑 ---
@@ -280,25 +278,25 @@ export default function Home() {
       if (user) fetchChatList(user.id);
   }
 
-  // --- 原有辅助功能保留 ---
-  const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
-  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
-  const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
-  // ✅ [修复版] 退出登录：彻底清空所有隐私数据
+  // --- 隐私修复：退出登录逻辑 ---
   const handleLogout = () => { 
       localStorage.removeItem("my_ai_user"); 
       setUser(null); 
       setIsProfileOpen(false); 
       
-      // 新增：清空当前屏幕上的对话
+      // 清空当前屏幕上的对话
       setMessages([]); 
-      // 新增：清空左侧历史记录列表
+      // 清空左侧历史记录列表
       setChatList([]); 
-      // 新增：重置当前对话ID
+      // 重置当前对话ID
       setCurrentChatId(null); 
-      // 新增：清空输入框
-      setInput("");
   };
+
+  // --- 原有辅助功能保留 ---
+  const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
+  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
+  const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
+  
   // 客服相关
   useEffect(() => {
     let interval: any;
@@ -329,15 +327,14 @@ export default function Home() {
   const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
   const redeemCard = async () => { const code = (document.getElementById('card-input') as HTMLInputElement).value; if(!code) return alert("请输入卡密"); try { const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); const data = await res.json(); if(data.success) { alert(`充值成功！到账 $${data.amount}`); setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); setIsRechargeOpen(false); } else { alert(data.error); } } catch(e) { alert("网络请求失败"); } };
 
-  // --- 核心修改：发送逻辑 ---
-  const handleSend = async (e?: any, textOverride?: string) => {
-    e?.preventDefault();
-    const content = textOverride || input;
-    if (!content.trim() && images.length === 0 && !file) return;
-    await handleChatSubmit(content, [], model, "general"); 
-    setInput(""); setImages([]); setFile(null); 
+  // --- 核心逻辑：发送与AI对话 (已更新支持文件) ---
+  
+  // 1. 给欢迎页/推荐问题用的简单发送入口
+  const handleSendSimple = async (text: string) => {
+    await handleChatSubmit(text, [], model, "general"); 
   };
 
+  // 2. 核心发送逻辑 (对接 ChatInput)
   const handleChatSubmit = async (
     text: string, 
     attachments: File[] = [], 
@@ -351,29 +348,50 @@ export default function Home() {
     const success = await handleTX('consume', cost, `使用 ${modelId}`);
     if (!success) return; 
 
-    // 2. 处理图片
+    setIsLoading(true);
+
+    // 2. 预处理文件
     const processedImages: string[] = [];
-    let processedFile: { name: string, content: string } | null = null;
-    if (attachments && attachments.length > 0) {
+    let appendedText = text; 
+
+    if (attachments.length > 0) {
       for (const file of attachments) {
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve) => { reader.onload = (e) => resolve(e.target?.result as string); reader.readAsDataURL(file); });
-        if (file.type.startsWith("image/")) processedImages.push(base64);
-        else processedFile = { name: file.name, content: base64 };
+        if (file.type.startsWith("image/")) {
+          const reader = new FileReader();
+          const base64 = await new Promise<string>((resolve) => { 
+            reader.onload = (e) => resolve(e.target?.result as string); 
+            reader.readAsDataURL(file); 
+          });
+          processedImages.push(base64);
+        } else if (
+            file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".csv") || 
+            file.name.endsWith(".md") || file.name.endsWith(".json") || file.name.endsWith(".js") || file.name.endsWith(".py")
+        ) {
+           const reader = new FileReader();
+           const textContent = await new Promise<string>((resolve) => {
+             reader.onload = (e) => resolve(e.target?.result as string);
+             reader.readAsText(file);
+           });
+           appendedText += `\n\n[文件内容 ${file.name}]:\n${textContent}\n`;
+        } else {
+           alert(`暂不支持解析 ${file.name}，请复制内容粘贴。`);
+        }
       }
     }
 
     // 3. 乐观UI更新
-    const newUserMsg = { role: 'user', content: { text: text, images: processedImages, file: processedFile ? processedFile.name : null } };
+    const newUserMsg = { 
+        role: 'user', 
+        content: { text: appendedText, images: processedImages } 
+    };
     const newHistory = [...messages, newUserMsg];
-    setMessages(newHistory); // 立即显示
-    setIsLoading(true);
+    setMessages(newHistory); 
 
-    // 4. 构造发送给AI的历史 (只发文本和图，不发文件元数据)
+    // 4. 构造API请求数据
     const historyForAi = newHistory.map(m => ({
       role: m.role,
       content: typeof m.content === 'string' ? m.content : m.content.text,
-      images: (m.content as any).images // 传递图片
+      images: (m.content as any).images 
     }));
 
     // 5. 调用 AI
@@ -387,17 +405,14 @@ export default function Home() {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       
-      // 添加一个空的 assistant 消息用于流式更新
       setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-      
-      let fullResponseText = ""; // 用于最后保存
+      let fullResponseText = "";
 
       while (true) {
         const { done, value } = await reader?.read()!;
         if (done) break;
         const chunk = decoder.decode(value);
         fullResponseText += chunk;
-        
         setMessages(prev => {
           const newMsgs = [...prev];
           const lastMsg = newMsgs[newMsgs.length - 1];
@@ -406,7 +421,7 @@ export default function Home() {
         });
       }
 
-      // ✅ [新增] 6. 自动保存到 Supabase
+      // 6. 自动保存到 Supabase
       const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
       
       await fetch('/api/history', {
@@ -414,14 +429,14 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
               userId: user.id,
-              chatId: currentChatId, // 如果是null，后端会创建新的
+              chatId: currentChatId, 
               messages: finalMessages,
-              title: currentChatId ? undefined : text.slice(0, 30) // 如果是新对话，用第一句话当标题
+              title: currentChatId ? undefined : text.slice(0, 30) 
           })
       }).then(res => res.json()).then(data => {
           if (data.chat) {
-              setCurrentChatId(data.chat.id); // 绑定新创建的 ID
-              fetchChatList(user.id); // 刷新列表
+              setCurrentChatId(data.chat.id); 
+              fetchChatList(user.id); 
           }
       });
 
@@ -440,7 +455,7 @@ export default function Home() {
   return (
     <div className={`flex min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden`}>
       
-      {/* ✅ [新增] 左侧侧边栏 */}
+      {/* 左侧侧边栏 */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col shrink-0 overflow-hidden relative z-20`}>
          <div className="p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
@@ -491,7 +506,7 @@ export default function Home() {
                         <h2 className="text-2xl font-black mb-8">有什么可以帮您的？</h2>
                         <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
                             {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
-                                <button key={idx} onClick={() => handleSend(null, txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>{txt}</button>
+                                <button key={idx} onClick={() => handleSendSimple(txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>{txt}</button>
                             ))}
                         </div>
                     </div>
@@ -507,21 +522,21 @@ export default function Home() {
                                 {m.role === 'user' && typeof m.content === 'object' ? (
                                     <div className="space-y-2">
                                         {m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}
-                                        <div className="text-sm">{m.content.text}</div>
+                                        <div className="text-sm whitespace-pre-wrap">{m.content.text}</div>
                                     </div>
                                 ) : (
                                     <div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}>
                                         <ReactMarkdown>{cleanText}</ReactMarkdown>
-                                        {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSend(null,q)} />}
+                                        {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSendSimple(q)} />}
                                     </div>
                                 )}
                             </div>
-                            {/* ✅ [新增] 用户头像 (同步左下角样式) */}
-{m.role === 'user' && (
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">
-        {user.nickname[0]}
-    </div>
-)}
+                            {/* 用户头像 (修复版) */}
+                            {m.role === 'user' && (
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">
+                                    {user.nickname[0]}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -530,7 +545,7 @@ export default function Home() {
              </div>
           </div>
 
-          {/* 输入框区 */}
+          {/* 输入框区 (对接新的 ChatInput) */}
           <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}>
              <div className="max-w-3xl mx-auto">
                  <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
