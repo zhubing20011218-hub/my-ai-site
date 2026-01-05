@@ -12,6 +12,7 @@ import {
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm' // ✅ [新增] 引入表格支持插件
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 
@@ -27,7 +28,26 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// ✅ [新增] 图片压缩函数：把大图压缩到 1024px 以内，且质量为 0.7
+// ✅ [新增] 独立组件：代码块复制按钮
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button 
+      onClick={handleCopy} 
+      className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all backdrop-blur-sm"
+      title="复制代码"
+    >
+      {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+    </button>
+  );
+};
+
+// ✅ 图片压缩函数
 const compressImage = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -39,27 +59,16 @@ const compressImage = async (file: File): Promise<string> => {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        
-        // 限制最大宽高为 1024，保持比例
         const MAX_SIZE = 1024;
         if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
-          }
+          if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
         } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
+          if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
         }
-        
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        
-        // 压缩为 JPEG，质量 0.7 (大大减小体积)
         resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
       img.onerror = (error) => reject(error);
@@ -216,15 +225,13 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ [完整修正版] 主程序：包含侧边栏、隐私修复、用户头像、多模态发送(含文档解析、文件显示、图片修复+压缩)
+// ✅ [完整修正版] 主程序
 export default function Home() {
-  // --- 🆕 记忆与侧边栏状态 ---
   const [user, setUser] = useState<any>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // 侧边栏开关
-  const [chatList, setChatList] = useState<any[]>([]); // 历史记录列表
-  const [currentChatId, setCurrentChatId] = useState<string | null>(null); // 当前对话ID
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
+  const [chatList, setChatList] = useState<any[]>([]); 
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null); 
   
-  // 原有状态保留
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
@@ -234,7 +241,6 @@ export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
-  // Admin 相关状态
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
@@ -261,25 +267,19 @@ export default function Home() {
     return { cleanText, suggestions };
   };
 
-  // --- 初始化与同步 ---
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
     if(u) { 
         const p = JSON.parse(u); 
         setUser(p); 
         syncUserData(p.id, p.role);
-        fetchChatList(p.id); // 登录后拉取历史列表
+        fetchChatList(p.id); 
     }
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme === 'dark') setIsDarkMode(true);
-    
-    // 移动端自动收起侧边栏
     if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
-  // --- 🆕 记忆功能核心逻辑 ---
-  
-  // 1. 获取左侧列表
   const fetchChatList = async (uid: string) => {
     try {
         const res = await fetch(`/api/history?userId=${uid}`);
@@ -288,12 +288,11 @@ export default function Home() {
     } catch(e) { console.error("Fetch history failed", e); }
   };
 
-  // 2. 加载某个具体对话
   const loadChat = async (chatId: string) => {
-    if (isLoading) return; // 防止生成中切换
+    if (isLoading) return; 
     setCurrentChatId(chatId);
-    setMessages([]); // 先清空，给用户反应
-    if (window.innerWidth < 768) setIsSidebarOpen(false); // 移动端点击后收起
+    setMessages([]); 
+    if (window.innerWidth < 768) setIsSidebarOpen(false); 
     try {
         const res = await fetch(`/api/history?chatId=${chatId}`, { method: 'PUT' });
         const data = await res.json();
@@ -303,7 +302,6 @@ export default function Home() {
     } catch(e) { console.error("Load chat failed", e); }
   };
 
-  // 3. 开启新对话
   const startNewChat = () => {
     if (isLoading) return;
     setCurrentChatId(null);
@@ -311,7 +309,6 @@ export default function Home() {
     if (window.innerWidth < 768) setIsSidebarOpen(false);
   };
 
-  // 4. 删除对话
   const deleteChat = async (e: any, chatId: string) => {
       e.stopPropagation();
       if(!confirm("确定删除这条记录吗？")) return;
@@ -320,26 +317,19 @@ export default function Home() {
       if (user) fetchChatList(user.id);
   }
 
-  // --- 隐私修复：退出登录逻辑 ---
   const handleLogout = () => { 
       localStorage.removeItem("my_ai_user"); 
       setUser(null); 
       setIsProfileOpen(false); 
-      
-      // 清空当前屏幕上的对话
       setMessages([]); 
-      // 清空左侧历史记录列表
       setChatList([]); 
-      // 重置当前对话ID
       setCurrentChatId(null); 
   };
 
-  // --- 原有辅助功能保留 ---
   const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
   
-  // 客服相关
   useEffect(() => {
     let interval: any;
     if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) {
@@ -363,20 +353,15 @@ export default function Home() {
   const fetchSupportSessions = async () => { try { const res = await fetch('/api/support?action=list'); const data = await res.json(); if(data.sessions) setSupportSessions(data.sessions); } catch(e) {} };
   const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); const res = await fetch(`/api/support?action=history&userId=${targetUserId}`); const data = await res.json(); if (data.messages) setSupportMessages(data.messages); } catch(e) { alert("发送失败"); } };
   
-  // Admin相关
   const openAdminDetail = async (targetUser: any) => { setSelectedAdminUser(targetUser); setAdminUserTx([]); try { const res = await fetch(`/api/sync?id=${targetUser.id}`); const data = await res.json(); if (data.transactions) setAdminUserTx(data.transactions); } catch (e) { alert("获取详情失败"); } };
   const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) { console.error(e); } };
   const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
   const redeemCard = async () => { const code = (document.getElementById('card-input') as HTMLInputElement).value; if(!code) return alert("请输入卡密"); try { const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); const data = await res.json(); if(data.success) { alert(`充值成功！到账 $${data.amount}`); setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); setIsRechargeOpen(false); } else { alert(data.error); } } catch(e) { alert("网络请求失败"); } };
 
-  // --- 核心逻辑：发送与AI对话 (已更新支持多模态解析) ---
-  
-  // 1. 给欢迎页/推荐问题用的简单发送入口
   const handleSendSimple = async (text: string) => {
     await handleChatSubmit(text, [], model, "general"); 
   };
 
-  // 2. 核心发送逻辑 (对接 ChatInput)
   const handleChatSubmit = async (
     text: string, 
     attachments: File[] = [], 
@@ -385,31 +370,26 @@ export default function Home() {
   ) => {
     setModel(modelId);
     
-    // 1. 扣费
     const cost = MODEL_PRICING[modelId] || 0.01;
     const success = await handleTX('consume', cost, `使用 ${modelId}`);
     if (!success) return; 
 
     setIsLoading(true);
 
-    // 2. 预处理文件 (关键修改：解析 Word 和 Excel，并记录文件信息用于UI显示)
     const processedImages: string[] = [];
     const fileInfos: {name: string, type: string}[] = []; 
     let appendedText = text; 
 
     if (attachments.length > 0) {
       for (const file of attachments) {
-        // 记录文件信息
         fileInfos.push({ name: file.name, type: file.type });
 
-        // A. 图片 -> Base64 (✅ 使用压缩函数！)
         if (file.type.startsWith("image/")) {
           try {
             const compressedBase64 = await compressImage(file);
             processedImages.push(compressedBase64);
           } catch (e) {
             console.error("Image compress failed", e);
-            // 如果压缩失败，降级使用原始读取
             const reader = new FileReader();
             const base64 = await new Promise<string>((resolve) => { 
               reader.onload = (e) => resolve(e.target?.result as string); 
@@ -418,7 +398,6 @@ export default function Home() {
             processedImages.push(base64);
           }
         } 
-        // B. Word 文档 (.docx) -> 提取纯文本
         else if (file.name.endsWith(".docx")) {
            try {
              const arrayBuffer = await file.arrayBuffer();
@@ -429,12 +408,11 @@ export default function Home() {
              alert(`解析 Word 文档失败: ${file.name}`);
            }
         }
-        // C. Excel 表格 (.xlsx, .xls) -> 提取为 CSV 文本
         else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
            try {
              const arrayBuffer = await file.arrayBuffer();
              const workbook = XLSX.read(arrayBuffer);
-             const sheetName = workbook.SheetNames[0]; // 只读取第一个 sheet
+             const sheetName = workbook.SheetNames[0]; 
              const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
              appendedText += `\n\n=== 表格数据 (${file.name}) ===\n${csv}\n`;
            } catch(e) {
@@ -442,7 +420,6 @@ export default function Home() {
              alert(`解析 Excel 表格失败: ${file.name}`);
            }
         }
-        // D. 纯文本/代码文件 -> 直接读取
         else if (
             file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".csv") || 
             file.name.endsWith(".md") || file.name.endsWith(".json") || file.name.endsWith(".js") || file.name.endsWith(".py")
@@ -454,14 +431,12 @@ export default function Home() {
            });
            appendedText += `\n\n[文件内容 ${file.name}]:\n${textContent}\n`;
         } 
-        // E. 其他格式
         else {
            alert(`暂不支持解析 ${file.name}，请复制内容粘贴。`);
         }
       }
     }
 
-    // 3. 乐观UI更新 (在界面上显示文件卡片)
     const newUserMsg = { 
         role: 'user', 
         content: { text: text, images: processedImages, fileInfos: fileInfos } 
@@ -469,18 +444,14 @@ export default function Home() {
     const newHistory = [...messages, newUserMsg];
     setMessages(newHistory); 
 
-    // 4. 构造API请求数据 (✅ 修复：把图片塞回 content 里面！)
     const historyForAi = newHistory.map(m => ({
       role: m.role,
       content: { 
-         // 如果是当前用户发的消息，用处理后的 appendedText；否则用历史记录
          text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text),
-         // ✅ 关键：确保 images 属性存在，哪怕是空数组
          images: (m.content as any).images || []
       }
     }));
 
-    // 5. 调用 AI
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -507,7 +478,6 @@ export default function Home() {
         });
       }
 
-      // 6. 自动保存到 Supabase
       const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
       
       await fetch('/api/history', {
@@ -585,7 +555,6 @@ export default function Home() {
           {/* 聊天内容区 */}
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
              <div className="max-w-3xl mx-auto space-y-6">
-                {/* 欢迎语 */}
                 {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-20 text-center">
                         <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'} text-white`}>🧊</div>
@@ -598,7 +567,6 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* 消息列表 */}
                 {messages.map((m, i) => {
                     const { cleanText, suggestions } = parseMessageContent(m.content);
                     return (
@@ -607,10 +575,7 @@ export default function Home() {
                             <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100')}`}>
                                 {m.role === 'user' && typeof m.content === 'object' ? (
                                     <div className="space-y-2">
-                                        {/* 图片渲染 */}
                                         {m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}
-                                        
-                                        {/* 文件卡片渲染 (Word/Excel/TXT) */}
                                         {m.content.fileInfos?.length > 0 && (
                                            <div className="flex flex-wrap gap-2 mb-2">
                                              {m.content.fileInfos.map((f: any, idx: number) => (
@@ -621,18 +586,43 @@ export default function Home() {
                                              ))}
                                            </div>
                                         )}
-
-                                        {/* 文本内容 */}
                                         <div className="text-sm whitespace-pre-wrap">{m.content.text}</div>
                                     </div>
                                 ) : (
                                     <div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}>
-                                        <ReactMarkdown>{cleanText}</ReactMarkdown>
+                                        <ReactMarkdown 
+                                          remarkPlugins={[remarkGfm]}
+                                          components={{
+                                            code({node, inline, className, children, ...props}: any) {
+                                                const match = /language-(\w+)/.exec(className || '');
+                                                const text = String(children).replace(/\n$/, '');
+                                                if (!inline) {
+                                                    return (
+                                                        <div className="relative mb-4 group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                                                            <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
+                                                                <span className="text-[10px] font-mono text-slate-500 uppercase">{match?.[1] || 'Code'}</span>
+                                                                <CopyButton text={text} />
+                                                            </div>
+                                                            <pre className="p-4 bg-slate-50 dark:bg-slate-900 overflow-x-auto text-xs font-mono">
+                                                                <code className={className} {...props}>{children}</code>
+                                                            </pre>
+                                                        </div>
+                                                    )
+                                                }
+                                                return <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-red-500 font-mono text-xs" {...props}>{children}</code>
+                                            },
+                                            table: ({node, ...props}) => <div className="overflow-x-auto my-4 rounded-lg border border-slate-200 dark:border-slate-700"><table className="w-full text-sm text-left" {...props} /></div>,
+                                            thead: ({node, ...props}) => <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500 font-bold" {...props} />,
+                                            th: ({node, ...props}) => <th className="px-4 py-3 border-b border-slate-200 dark:border-slate-700" {...props} />,
+                                            td: ({node, ...props}) => <td className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 last:border-0" {...props} />
+                                          }}
+                                        >
+                                            {cleanText}
+                                        </ReactMarkdown>
                                         {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSendSimple(q)} />}
                                     </div>
                                 )}
                             </div>
-                            {/* 用户头像 */}
                             {m.role === 'user' && (
                                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">
                                     {user.nickname[0]}
@@ -646,14 +636,12 @@ export default function Home() {
              </div>
           </div>
 
-          {/* 输入框区 */}
           <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}>
              <div className="max-w-3xl mx-auto">
                  <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
              </div>
           </div>
 
-          {/* 弹窗 (Profile, Admin, Support) - 已保留 */}
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
@@ -678,8 +666,8 @@ export default function Home() {
               </div>
           )}
 
-          {/* Admin Dialogs - 已保留 */}
           <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
+          <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
 
       </div>
     </div>
