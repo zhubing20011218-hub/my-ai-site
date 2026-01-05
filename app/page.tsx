@@ -175,7 +175,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ [完整修正版] 主程序：包含侧边栏、隐私修复、用户头像、多模态发送(含文档解析和文件显示)
+// ✅ [完整修正版] 主程序：包含侧边栏、隐私修复、用户头像、多模态发送(含文档解析、文件显示、图片修复)
 export default function Home() {
   // --- 🆕 记忆与侧边栏状态 ---
   const [user, setUser] = useState<any>(null);
@@ -188,7 +188,6 @@ export default function Home() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  // const [input, setInput] = useState(""); // ❌ 移除：输入状态交给了 ChatInput 组件管理
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("gemini-2.0-flash-exp");
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -354,7 +353,7 @@ export default function Home() {
 
     // 2. 预处理文件 (关键修改：解析 Word 和 Excel，并记录文件信息用于UI显示)
     const processedImages: string[] = [];
-    const fileInfos: {name: string, type: string}[] = []; // ✅ [新增] 记录文件元数据
+    const fileInfos: {name: string, type: string}[] = []; 
     let appendedText = text; 
 
     if (attachments.length > 0) {
@@ -417,18 +416,20 @@ export default function Home() {
     // 3. 乐观UI更新 (在界面上显示文件卡片)
     const newUserMsg = { 
         role: 'user', 
-        // ✅ [修改] 把 fileInfos 存进去，方便渲染
         content: { text: text, images: processedImages, fileInfos: fileInfos } 
     };
     const newHistory = [...messages, newUserMsg];
     setMessages(newHistory); 
 
-    // 4. 构造API请求数据 (这里真正把提取的内容发给 AI)
+    // 4. 构造API请求数据 (✅ 修复：把图片塞回 content 里面！)
     const historyForAi = newHistory.map(m => ({
       role: m.role,
-      // 如果是当前这条消息，使用 appendedText (包含了解析后的文件内容)
-      content: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text),
-      images: (m.content as any).images 
+      content: { 
+         // 如果是当前用户发的消息，用处理后的 appendedText；否则用历史记录
+         text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text),
+         // ✅ 关键：确保 images 属性存在，哪怕是空数组
+         images: (m.content as any).images || []
+      }
     }));
 
     // 5. 调用 AI
@@ -561,7 +562,7 @@ export default function Home() {
                                         {/* 图片渲染 */}
                                         {m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}
                                         
-                                        {/* ✅ [新增] 文件卡片渲染 (Word/Excel/TXT) */}
+                                        {/* 文件卡片渲染 (Word/Excel/TXT) */}
                                         {m.content.fileInfos?.length > 0 && (
                                            <div className="flex flex-wrap gap-2 mb-2">
                                              {m.content.fileInfos.map((f: any, idx: number) => (
@@ -604,7 +605,7 @@ export default function Home() {
              </div>
           </div>
 
-          {/* 弹窗 (Profile, Admin, Support) */}
+          {/* 弹窗 (Profile, Admin, Support) - 已保留 */}
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
@@ -629,8 +630,9 @@ export default function Home() {
               </div>
           )}
 
-          {/* Admin Dialogs */}
+          {/* Admin Dialogs - 已保留 */}
           <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
+          <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
 
       </div>
     </div>
