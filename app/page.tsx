@@ -10,7 +10,7 @@ import {
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
-  FileSpreadsheet, Download, Maximize2 // ✅ [新增图标]
+  FileSpreadsheet, Download, Maximize2 
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -29,7 +29,7 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// ✅ [新增] Toast 提示组件 (左下角浮窗)
+// ✅ Toast 提示组件
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success', show: boolean }) => {
   if (!show) return null;
   return (
@@ -42,7 +42,7 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ✅ 独立组件：代码块复制按钮
+// ✅ 复制按钮
 const CopyButton = ({ text }: { text: string }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -248,7 +248,6 @@ export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
-  // ✅ [新增] 表格预览与Toast状态
   const [previewTableData, setPreviewTableData] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [toastState, setToastState] = useState<{show: boolean, type: 'loading'|'success', msg: string}>({ show: false, type: 'loading', msg: '' });
@@ -292,13 +291,11 @@ export default function Home() {
     if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
-  // ✅ Toast 触发函数
   const showToast = (type: 'loading' | 'success', msg: string) => {
     setToastState({ show: true, type, msg });
     setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000);
   };
 
-  // ✅ 处理下载 Excel
   const handleDownloadExcel = (csvData: string) => {
     showToast('loading', '正在生成表格...');
     setTimeout(() => {
@@ -307,12 +304,11 @@ export default function Home() {
             XLSX.writeFile(wb, `eureka_data_${new Date().getTime()}.xlsx`);
             showToast('success', '下载已开始');
         } catch (e) {
-            showToast('loading', '下载失败，请重试'); // 使用 loading 图标代替错误
+            showToast('loading', '下载失败，请重试'); 
         }
-    }, 1500); // 假装处理一下增加仪式感
+    }, 1500); 
   };
 
-  // ✅ 处理预览表格
   const handlePreviewTable = (csvData: string) => {
     showToast('loading', '正在生成表格...');
     setTimeout(() => {
@@ -641,18 +637,18 @@ export default function Home() {
                                             code({node, inline, className, children, ...props}: any) {
                                                 const match = /language-(\w+)/.exec(className || '');
                                                 const text = String(children).replace(/\n$/, '');
-                                                
-                                                // ✅ [关键修改] 如果是 CSV 数据，显示“表格卡片”
+                                                const isGenerating = isLoading && i === messages.length - 1; // ✅ [关键] 判断是否正在生成
+
+                                                // CSV 表格卡片
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
-                                                    // 简单判断是否像CSV
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
                                                       return (
                                                         <div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
                                                             <div className="bg-green-50 dark:bg-green-900/20 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                                                                 <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-bold text-xs">
-                                                                    <FileSpreadsheet size={16} /> 
-                                                                    <span>已生成数据表格</span>
+                                                                    {isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}
+                                                                    <span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span>
                                                                 </div>
                                                                 <span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span>
                                                             </div>
@@ -660,15 +656,17 @@ export default function Home() {
                                                                 <Button 
                                                                     onClick={() => handlePreviewTable(text)} 
                                                                     variant="outline" 
+                                                                    disabled={isGenerating} // ✅ [防呆] 生成中禁用
                                                                     className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900"
                                                                 >
-                                                                    <Maximize2 size={14} /> 在线预览
+                                                                    {isGenerating ? <Loader2 size={14} className="animate-spin"/> : <Maximize2 size={14} />} 在线预览
                                                                 </Button>
                                                                 <Button 
                                                                     onClick={() => handleDownloadExcel(text)} 
-                                                                    className="flex-1 h-9 text-xs font-bold gap-2 bg-green-600 hover:bg-green-700 text-white border-none shadow-md shadow-green-200 dark:shadow-none"
+                                                                    disabled={isGenerating} // ✅ [防呆] 生成中禁用
+                                                                    className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}
                                                                 >
-                                                                    <Download size={14} /> 导出 Excel
+                                                                    {isGenerating ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} 导出 Excel
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -676,7 +674,6 @@ export default function Home() {
                                                     }
                                                 }
 
-                                                // 普通代码块
                                                 if (!inline) {
                                                     return (
                                                         <div className="relative mb-4 group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
@@ -723,29 +720,29 @@ export default function Home() {
              </div>
           </div>
 
-          {/* 表格预览弹窗 */}
+          {/* ✅ [修复] 预览弹窗：加宽、加高、加滚动条 */}
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col p-0 rounded-2xl border-none">
-                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+            <DialogContent className="max-w-[90vw] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden">
+                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0">
                     <h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3>
                     <Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button>
                 </div>
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950">
                     {previewTableData && (
-                        <div className="border rounded-lg overflow-hidden">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0">
+                        <div className="min-w-full inline-block align-middle">
+                            <table className="min-w-full text-sm text-left border-collapse">
+                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-10 shadow-sm">
                                     <tr>
                                         {previewTableData.split('\n')[0].split(',').map((h, i) => (
-                                            <th key={i} className="px-4 py-3 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap">{h}</th>
+                                            <th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (
-                                        <tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                        <tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             {row.split(',').map((cell, j) => (
-                                                <td key={j} className="px-4 py-2 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap">{cell}</td>
+                                                <td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[100px]">{cell}</td>
                                             ))}
                                         </tr>
                                     ))}
@@ -757,14 +754,12 @@ export default function Home() {
             </DialogContent>
           </Dialog>
 
-          {/* 其他弹窗保持不变 */}
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
           {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
           {isSupportOpen && (<div className="fixed right-6 bottom-24 z-50 w-80 h-96 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl flex flex-col overflow-hidden border dark:border-slate-800"><div className="p-3 bg-blue-600 text-white flex justify-between items-center"><span className="font-bold text-xs">客服</span><button onClick={()=>setIsSupportOpen(false)}><X size={14}/></button></div><div className="flex-1 overflow-y-auto p-3 space-y-2">{supportMessages.map(m=><div key={m.id} className={`p-2 rounded-lg text-xs max-w-[80%] ${m.is_admin ? 'bg-slate-100 dark:bg-slate-800 self-start' : 'bg-blue-100 text-blue-800 self-end ml-auto'}`}>{m.content}</div>)}<div ref={supportScrollRef}/></div><div className="p-2 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} className="h-8 text-xs"/><Button size="icon" className="h-8 w-8" onClick={sendSupportMessage}><Send size={12}/></Button></div></div>)}
           {user?.role === 'admin' && (<div className="fixed right-6 bottom-6 flex gap-2 z-50"><Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}}>卡密管理</Button><Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}}>客服后台</Button></div>)}
           <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
-          <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader><div className="flex flex-col md:flex-row h-[600px]"><div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3><div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">{supportSessions.map(s => (<div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}><div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div><div className="text-[10px] truncate opacity-60">{s.last_message}</div></div>))}{supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}</div></div><div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">{activeSessionUser ? (<><div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">{supportMessages.map(m => (<div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div></div>))}<div ref={supportScrollRef} /></div><div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/><Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button></div></>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}</div></div></DialogContent></Dialog>
           <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
 
       </div>
