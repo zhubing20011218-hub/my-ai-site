@@ -14,7 +14,7 @@ export const MODEL_OPTIONS = [
   { id: "banana-sdxl", name: "Banana SDXL", desc: "极速绘图", icon: ImageIcon, color: "text-yellow-500", type: "image" },
 ];
 
-// ✅ [新增功能] 角色预设 (针对卖家优化)
+// ✅ [配置保留] 角色预设
 export const ROLE_OPTIONS = [
   { id: "general", name: "通用助手", icon: Sparkles, color: "text-slate-600", hint: "有问题尽管问我..." },
   { id: "tiktok_script", name: "爆款脚本", icon: Video, color: "text-pink-500", hint: "输入产品名，生成黄金前3秒脚本..." },
@@ -24,7 +24,6 @@ export const ROLE_OPTIONS = [
 ];
 
 interface ChatInputProps {
-  // ✅ [接口更新] 增加了 roleId
   onSend: (message: string, attachments: File[], modelId: string, roleId: string) => void;
   disabled?: boolean;
 }
@@ -58,7 +57,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // --- 拖拽处理 ---
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
@@ -68,32 +66,25 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // --- 文件选择处理 ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) setFiles((prev) => [...prev, ...Array.from(selectedFiles)]);
     if (fileInputRef.current) fileInputRef.current.value = ""; 
   };
 
-  // ✅ [增强版] 粘贴处理：支持截图、图片、文件
   const handlePaste = (e: React.ClipboardEvent) => {
-    // 1. 优先检查 clipboardData.items (处理截图的关键)
     const items = e.clipboardData.items;
     const pastedFiles: File[] = [];
-
     for (let i = 0; i < items.length; i++) {
         if (items[i].kind === 'file') {
             const file = items[i].getAsFile();
             if (file) pastedFiles.push(file);
         }
     }
-
-    // 2. 只有当粘贴板里确实包含文件时，才阻止默认行为并添加到列表
     if (pastedFiles.length > 0) {
-        e.preventDefault(); // 阻止把文件名粘贴进输入框
+        e.preventDefault(); 
         setFiles((prev) => [...prev, ...pastedFiles]);
     }
-    // 3. 如果只是普通文字，什么都不做，让 Textarea 自动处理
   };
 
   const removeFile = (index: number) => {
@@ -102,17 +93,8 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   return (
     <div className="w-full max-w-3xl mx-auto p-4 relative">
-      {/* ✅ [升级] 增加 accept 属性，支持更多文档格式 */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileSelect} 
-        className="hidden" 
-        multiple 
-        accept="image/*,.txt,.md,.csv,.json,.js,.py,.docx,.pdf" 
-      />
+      <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" multiple accept="image/*,.txt,.md,.csv,.json,.js,.py,.docx,.pdf,.xlsx,.xls" />
 
-      {/* 拖拽遮罩层 */}
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-blue-500/10 border-2 border-blue-500 border-dashed rounded-2xl flex items-center justify-center backdrop-blur-sm pointer-events-none mx-4 my-4">
           <p className="text-blue-600 font-bold text-lg animate-pulse">松开鼠标上传文件</p>
@@ -125,18 +107,18 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* 文件预览区域 */}
         {files.length > 0 && (
           <div className="flex gap-2 p-3 pb-0 overflow-x-auto">
             {files.map((file, i) => (
               <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-20 h-20 flex flex-col items-center justify-center overflow-hidden">
-                <button onClick={() => removeFile(i)} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"><X size={10} /></button>
+                {/* ✅ [修复] 按钮位置改为正数，防止被切掉 */}
+                <button onClick={() => removeFile(i)} className="absolute top-1 right-1 bg-black/50 hover:bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"><X size={10} /></button>
                 {file.type.startsWith("image/") ? (
                     <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" />
                 ) : (
-                    <div className="flex flex-col items-center text-gray-400 w-full">
+                    <div className="flex flex-col items-center text-gray-400 w-full pt-1">
                         <FileText size={24} className="mb-1 text-blue-400" />
-                        <span className="text-[9px] truncate w-full text-center px-1">{file.name}</span>
+                        <span className="text-[9px] truncate w-full text-center px-1 leading-tight">{file.name}</span>
                     </div>
                 )}
               </div>
@@ -144,7 +126,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           </div>
         )}
 
-        {/* 输入框 */}
         <TextareaAutosize
           minRows={1} maxRows={8} 
           placeholder={currentRole.hint}
@@ -156,12 +137,10 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           disabled={disabled}
         />
 
-        {/* 底部工具栏 */}
         <div className="flex justify-between items-center px-2 pb-2">
           <div className="flex items-center gap-1">
             <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" title="上传文件"><Paperclip size={18} /></button>
 
-            {/* 角色选择器 */}
             <div className="relative">
               <button onClick={() => setShowRoleMenu(!showRoleMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-lg transition">
                 <currentRole.icon size={14} className={currentRole.color} />
@@ -182,7 +161,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               )}
             </div>
 
-            {/* 模型选择器 */}
             <div className="relative">
               <button onClick={() => setShowModelMenu(!showModelMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition">
                 <currentModel.icon size={14} />
