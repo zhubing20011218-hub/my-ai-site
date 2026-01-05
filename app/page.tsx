@@ -284,8 +284,21 @@ export default function Home() {
   const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
-  const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
-  
+  // ✅ [修复版] 退出登录：彻底清空所有隐私数据
+  const handleLogout = () => { 
+      localStorage.removeItem("my_ai_user"); 
+      setUser(null); 
+      setIsProfileOpen(false); 
+      
+      // 新增：清空当前屏幕上的对话
+      setMessages([]); 
+      // 新增：清空左侧历史记录列表
+      setChatList([]); 
+      // 新增：重置当前对话ID
+      setCurrentChatId(null); 
+      // 新增：清空输入框
+      setInput("");
+  };
   // 客服相关
   useEffect(() => {
     let interval: any;
