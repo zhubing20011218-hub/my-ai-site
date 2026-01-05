@@ -516,6 +516,12 @@ export default function Home() {
                                     </div>
                                 )}
                             </div>
+                            {/* ✅ [新增] 用户头像 (同步左下角样式) */}
+{m.role === 'user' && (
+    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">
+        {user.nickname[0]}
+    </div>
+)}
                         </div>
                     );
                 })}
