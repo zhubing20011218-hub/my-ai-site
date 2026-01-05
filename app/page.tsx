@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button"
 import ChatInput from "@/components/ChatInput"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { 
-  History, Coins, Shield, Terminal, Check, Copy, User, Bot, Loader2, Square, Send, 
-  Paperclip, X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, Calendar, MessageCircle, RefreshCw, Server
+  History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
+  X, LogOut, Sparkles, PartyPopper, ArrowRight, Lock, Mail, Eye, EyeOff, AlertCircle,
+  Moon, Sun, FileText, ArrowLeft, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 
@@ -174,13 +173,18 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ 主程序
+// ✅ [修改版] 主程序：包含侧边栏和记忆功能
 export default function Home() {
+  // --- 🆕 记忆与侧边栏状态 ---
   const [user, setUser] = useState<any>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true); // 侧边栏开关
+  const [chatList, setChatList] = useState<any[]>([]); // 历史记录列表
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null); // 当前对话ID
+  
+  // 原有状态保留
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
-  const [rechargeTab, setRechargeTab] = useState<'card' | 'online'>('card');
   const [messages, setMessages] = useState<any[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -188,16 +192,15 @@ export default function Home() {
   const [images, setImages] = useState<string[]>([]);
   const [file, setFile] = useState<{name:string, content:string} | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  
+  // Admin 相关状态
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
   const [isAdminCardsOpen, setIsAdminCardsOpen] = useState(false); 
   const [cards, setCards] = useState<any[]>([]);
   const [cardConfig, setCardConfig] = useState({amount: 10, count: 1, days: 0});
-
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportInput, setSupportInput] = useState("");
@@ -209,31 +212,81 @@ export default function Home() {
   const parseMessageContent = (content: any) => {
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
-
     const START_TAG = '<<<SUGGESTIONS_START>>>';
     const END_TAG = '<<<SUGGESTIONS_END>>>';
-
     const parts = rawText.split(START_TAG);
     const cleanText = parts[0]; 
     let suggestions: string[] = [];
-
-    if (parts[1]) {
-      try {
-        const jsonStr = parts[1].split(END_TAG)[0];
-        suggestions = JSON.parse(jsonStr);
-      } catch (e) {}
-    }
-
+    if (parts[1]) { try { const jsonStr = parts[1].split(END_TAG)[0]; suggestions = JSON.parse(jsonStr); } catch (e) {} }
     return { cleanText, suggestions };
   };
 
+  // --- 初始化与同步 ---
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
-    if(u) { const p = JSON.parse(u); setUser(p); syncUserData(p.id, p.role); }
+    if(u) { 
+        const p = JSON.parse(u); 
+        setUser(p); 
+        syncUserData(p.id, p.role);
+        fetchChatList(p.id); // 登录后拉取历史列表
+    }
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme === 'dark') setIsDarkMode(true);
+    
+    // 移动端自动收起侧边栏
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
+  // --- 🆕 记忆功能核心逻辑 ---
+  
+  // 1. 获取左侧列表
+  const fetchChatList = async (uid: string) => {
+    try {
+        const res = await fetch(`/api/history?userId=${uid}`);
+        const data = await res.json();
+        if(data.chats) setChatList(data.chats);
+    } catch(e) { console.error("Fetch history failed", e); }
+  };
+
+  // 2. 加载某个具体对话
+  const loadChat = async (chatId: string) => {
+    if (isLoading) return; // 防止生成中切换
+    setCurrentChatId(chatId);
+    setMessages([]); // 先清空，给用户反应
+    if (window.innerWidth < 768) setIsSidebarOpen(false); // 移动端点击后收起
+    try {
+        const res = await fetch(`/api/history?chatId=${chatId}`, { method: 'PUT' });
+        const data = await res.json();
+        if (data.chat && data.chat.messages) {
+            setMessages(data.chat.messages);
+        }
+    } catch(e) { console.error("Load chat failed", e); }
+  };
+
+  // 3. 开启新对话
+  const startNewChat = () => {
+    if (isLoading) return;
+    setCurrentChatId(null);
+    setMessages([]);
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
+  };
+
+  // 4. 删除对话
+  const deleteChat = async (e: any, chatId: string) => {
+      e.stopPropagation();
+      if(!confirm("确定删除这条记录吗？")) return;
+      await fetch(`/api/history?chatId=${chatId}`, { method: 'DELETE' });
+      if (currentChatId === chatId) startNewChat();
+      if (user) fetchChatList(user.id);
+  }
+
+  // --- 原有辅助功能保留 ---
+  const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
+  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
+  const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
+  const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
+  
+  // 客服相关
   useEffect(() => {
     let interval: any;
     if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) {
@@ -254,120 +307,16 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [user, isSupportOpen, isAdminSupportOpen, activeSessionUser]);
 
-  const fetchSupportSessions = async () => {
-    try {
-      const res = await fetch('/api/support?action=list');
-      const data = await res.json();
-      if(data.sessions) setSupportSessions(data.sessions);
-    } catch(e) {}
-  };
-
-  const sendSupportMessage = async () => {
-    if(!supportInput.trim()) return;
-    const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id;
-    try {
-      await fetch('/api/support', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' })
-      });
-      setSupportInput("");
-      const res = await fetch(`/api/support?action=history&userId=${targetUserId}`);
-      const data = await res.json();
-      if (data.messages) setSupportMessages(data.messages);
-    } catch(e) { alert("发送失败"); }
-  };
-
-  const syncUserData = async (uid: string, role: string) => {
-    try {
-      const res = await fetch(`/api/sync?id=${uid}&role=${role}`);
-      const data = await res.json();
-      if (data.balance) {
-        setUser((prev:any) => ({ ...prev, balance: data.balance }));
-        setTransactions(data.transactions || []);
-      }
-      if (role === 'admin' && data.users) setAdminUsers(data.users);
-    } catch (e) { console.error("Sync error:", e); }
-  };
-
-  const openAdminDetail = async (targetUser: any) => {
-    setSelectedAdminUser(targetUser);
-    setAdminUserTx([]); 
-    try {
-      const res = await fetch(`/api/sync?id=${targetUser.id}`); 
-      const data = await res.json();
-      if (data.transactions) setAdminUserTx(data.transactions);
-    } catch (e) { alert("获取详情失败"); }
-  };
-
-  const fetchCards = async () => {
-    try {
-      const res = await fetch('/api/admin/cards');
-      const data = await res.json();
-      if(data.cards) setCards(data.cards);
-    } catch(e) { console.error(e); }
-  };
-
-  const generateCards = async () => {
-    try {
-      const res = await fetch('/api/admin/cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cardConfig)
-      });
-      const data = await res.json();
-      if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); }
-      else alert(data.error);
-    } catch(e) { alert("生成失败"); }
-  };
-
-  const redeemCard = async () => {
-    const code = (document.getElementById('card-input') as HTMLInputElement).value;
-    if(!code) return alert("请输入卡密");
-    try {
-      const res = await fetch('/api/card/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, code })
-      });
-      const data = await res.json();
-      if(data.success) {
-        alert(`充值成功！到账 $${data.amount}`);
-        setUser((prev:any) => ({ ...prev, balance: data.balance }));
-        syncUserData(user.id, user.role); 
-        setIsRechargeOpen(false);
-      } else { alert(data.error); }
-    } catch(e) { alert("网络请求失败"); }
-  };
-
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    localStorage.setItem("theme", newMode ? 'dark' : 'light');
-  };
-
-  const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); };
+  const fetchSupportSessions = async () => { try { const res = await fetch('/api/support?action=list'); const data = await res.json(); if(data.sessions) setSupportSessions(data.sessions); } catch(e) {} };
+  const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); const res = await fetch(`/api/support?action=history&userId=${targetUserId}`); const data = await res.json(); if (data.messages) setSupportMessages(data.messages); } catch(e) { alert("发送失败"); } };
   
-  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
-    if(!user) return false;
-    if (user.role === 'admin') return true;
-    const cur = parseFloat(user.balance);
-    if(type === 'consume' && cur < amount) { alert(`余额不足！使用此模型需要 $${amount}，您当前仅有 $${cur}`); return false; }
-    try {
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id, type, amount, description: desc })
-      });
-      const data = await res.json();
-      if (!res.ok) { alert(data.error); return false; }
-      setUser((prev:any) => ({ ...prev, balance: data.balance }));
-      syncUserData(user.id, user.role); 
-      return true;
-    } catch (e) { alert("网络错误"); return false; }
-  };
+  // Admin相关
+  const openAdminDetail = async (targetUser: any) => { setSelectedAdminUser(targetUser); setAdminUserTx([]); try { const res = await fetch(`/api/sync?id=${targetUser.id}`); const data = await res.json(); if (data.transactions) setAdminUserTx(data.transactions); } catch (e) { alert("获取详情失败"); } };
+  const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) { console.error(e); } };
+  const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
+  const redeemCard = async () => { const code = (document.getElementById('card-input') as HTMLInputElement).value; if(!code) return alert("请输入卡密"); try { const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); const data = await res.json(); if(data.success) { alert(`充值成功！到账 $${data.amount}`); setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); setIsRechargeOpen(false); } else { alert(data.error); } } catch(e) { alert("网络请求失败"); } };
 
-  // ✅ 旧发送逻辑 (保留给推荐问题按钮)
+  // --- 核心修改：发送逻辑 ---
   const handleSend = async (e?: any, textOverride?: string) => {
     e?.preventDefault();
     const content = textOverride || input;
@@ -376,77 +325,66 @@ export default function Home() {
     setInput(""); setImages([]); setFile(null); 
   };
 
-  // ✅ 新发送逻辑 (处理权限 & 角色)
   const handleChatSubmit = async (
     text: string, 
     attachments: File[] = [], 
     modelId: string = "gemini-2.0-flash-exp",
     roleId: string = "general" 
   ) => {
-    setModel(modelId); 
-
-    // 💰 计费
+    setModel(modelId);
+    
+    // 1. 扣费
     const cost = MODEL_PRICING[modelId] || 0.01;
-    const success = await handleTX('consume', cost, `使用 ${modelId} (${roleId}) 生成内容`);
+    const success = await handleTX('consume', cost, `使用 ${modelId}`);
     if (!success) return; 
 
-    // 路由
-    let apiModel = modelId;
-    
-    // 处理文件
+    // 2. 处理图片
     const processedImages: string[] = [];
     let processedFile: { name: string, content: string } | null = null;
-
     if (attachments && attachments.length > 0) {
       for (const file of attachments) {
         const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve) => {
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-        if (file.type.startsWith("image/")) {
-          processedImages.push(base64);
-        } else {
-          processedFile = { name: file.name, content: base64 };
-        }
+        const base64 = await new Promise<string>((resolve) => { reader.onload = (e) => resolve(e.target?.result as string); reader.readAsDataURL(file); });
+        if (file.type.startsWith("image/")) processedImages.push(base64);
+        else processedFile = { name: file.name, content: base64 };
       }
     }
 
-    // UI 更新
-    const uiContent = { 
-      text: text, 
-      images: processedImages, 
-      file: processedFile ? processedFile.name : null 
-    };
-    setMessages(prev => [...prev, { role: 'user', content: uiContent }]);
+    // 3. 乐观UI更新
+    const newUserMsg = { role: 'user', content: { text: text, images: processedImages, file: processedFile ? processedFile.name : null } };
+    const newHistory = [...messages, newUserMsg];
+    setMessages(newHistory); // 立即显示
     setIsLoading(true);
-    
-    const history = messages.map(m => ({
+
+    // 4. 构造发送给AI的历史 (只发文本和图，不发文件元数据)
+    const historyForAi = newHistory.map(m => ({
       role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.content.text
+      content: typeof m.content === 'string' ? m.content : m.content.text,
+      images: (m.content as any).images // 传递图片
     }));
 
-    history.push({
-      role: 'user',
-      content: { text, images: processedImages, file: processedFile }
-    });
-
+    // 5. 调用 AI
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history, model: apiModel, persona: roleId }),
+        body: JSON.stringify({ messages: historyForAi, model: modelId, persona: roleId }),
       });
       
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       
+      // 添加一个空的 assistant 消息用于流式更新
       setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+      
+      let fullResponseText = ""; // 用于最后保存
 
       while (true) {
         const { done, value } = await reader?.read()!;
         if (done) break;
         const chunk = decoder.decode(value);
+        fullResponseText += chunk;
+        
         setMessages(prev => {
           const newMsgs = [...prev];
           const lastMsg = newMsgs[newMsgs.length - 1];
@@ -454,9 +392,29 @@ export default function Home() {
           return newMsgs;
         });
       }
+
+      // ✅ [新增] 6. 自动保存到 Supabase
+      const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
+      
+      await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+              userId: user.id,
+              chatId: currentChatId, // 如果是null，后端会创建新的
+              messages: finalMessages,
+              title: currentChatId ? undefined : text.slice(0, 30) // 如果是新对话，用第一句话当标题
+          })
+      }).then(res => res.json()).then(data => {
+          if (data.chat) {
+              setCurrentChatId(data.chat.id); // 绑定新创建的 ID
+              fetchChatList(user.id); // 刷新列表
+          }
+      });
+
     } catch (e) {
       console.error(e);
-      alert("发送失败，请联系客服退款");
+      alert("发送失败");
     } finally {
       setIsLoading(false);
     }
@@ -464,172 +422,133 @@ export default function Home() {
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
 
-  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); }} />;
+  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); fetchChatList(u.id); }} />;
 
   return (
-    <div className={`flex flex-col min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-x-hidden`}>
-      {/* ✅ [修复] 顶部欢迎语 */}
-      <div className={`w-full py-2 text-center border-b transition-colors ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}>
-        <p className={`text-[11px] font-medium tracking-tight ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>欢迎来到Eureka，有问题可以 <a href="#" onClick={(e)=>{e.preventDefault(); setIsSupportOpen(true)}} className="text-blue-500 font-bold hover:underline mx-1">联系客服</a></p>
-      </div>
-      <nav className={`h-14 flex items-center justify-between px-6 border-b shrink-0 transition-colors ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-        <div className="flex items-center gap-2 font-black text-xl tracking-tighter"><div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
-        <div className="flex items-center gap-4">
-           <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button>
-           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
-             <DialogTrigger asChild><button className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold shadow-sm" style={{ background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)' }}>{user.nickname[0].toUpperCase()}</button></DialogTrigger>
-             <DialogContent className={`sm:max-w-md p-0 overflow-hidden border-none rounded-3xl shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}>
-               <DialogHeader className="sr-only"><DialogTitle>个人中心</DialogTitle></DialogHeader>
-               <div className={`p-6 flex flex-col items-center border-b ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold mb-3 shadow-lg ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><h2 className="text-xl font-black">ID: {user.nickname}</h2><p className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{user.account}</p><button onClick={handleLogout} className="text-xs text-slate-400 mt-4 flex items-center gap-1 hover:text-red-500 transition-colors"><LogOut size={12}/> 退出账户</button></div>
-               <div className={`p-6 ${isDarkMode ? 'bg-slate-950/50' : 'bg-slate-50/50'}`}>
-                 <div className={`rounded-2xl p-5 border shadow-sm mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div>
-                 <div className="space-y-4"><div className="flex items-center gap-2 font-bold text-[10px] text-slate-500 uppercase tracking-widest"><History size={12}/> 记录</div><div className="max-h-[120px] overflow-y-auto space-y-2 pr-1 scrollbar-hide text-[11px]">{transactions.map(t=>(<div key={t.id} className={`flex justify-between p-2.5 rounded-xl border font-bold ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-200' : 'bg-white border-slate-100 text-slate-900'}`}><span>{t.description}</span><span className={t.type==='topup'?'text-green-600':'text-slate-500'}>${t.amount}</span></div>))}</div></div>
-               </div>
-             </DialogContent>
-           </Dialog>
-        </div>
-      </nav>
-
-      {/* Admin Panel */}
-      {user?.role === 'admin' && (
-        <div className={`fixed right-6 bottom-32 w-80 p-5 rounded-[32px] border shadow-2xl z-50 ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-slate-950 border-white/10 text-white'}`}>
-           <div className="font-bold text-red-400 mb-4 text-[10px] tracking-widest flex items-center gap-2 border-b border-white/5 pb-3"><Shield size={14} className="animate-pulse"/> EUREKA ADMIN (Cloud)</div>
-           <div className="mb-4 grid grid-cols-2 gap-2">
-             <Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}} className="h-9 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl text-[10px] font-black border-none transition-all flex items-center justify-center gap-2"><CreditCard size={12}/> 卡密中心</Button>
-             <Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}} className="h-9 bg-green-600/20 text-green-400 hover:bg-green-600 hover:text-white rounded-xl text-[10px] font-black border-none transition-all flex items-center justify-center gap-2"><MessageCircle size={12}/> 客服中心</Button>
-           </div>
-           <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 scrollbar-hide">
-             {adminUsers.map((u:any)=>(
-               <div key={u.id} className={`p-4 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-white/5 border-white/5'}`}>
-                 <div className="flex justify-between items-start mb-2"><div className="font-black text-blue-300 text-sm">{u.nickname}</div><div className="bg-green-500/10 text-green-400 px-2 py-0.5 rounded text-[9px] font-mono">${u.balance}</div></div>
-                 <div className="text-[10px] text-white/40 space-y-1 mb-3"><div>账号: <span className="text-white/60">{u.account}</span></div><div>密码: <span className="text-white/80 font-mono">{u.password}</span></div></div>
-                 <Button onClick={() => openAdminDetail(u)} className="w-full h-8 bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border-none text-[10px] font-black rounded-xl transition-all">使用详情</Button>
-               </div>
-             ))}
-           </div>
-           <div className="mt-4 pt-2 border-t border-white/5 flex items-center gap-2 text-[9px] text-slate-500"><Server size={10}/> Env: {typeof window !== 'undefined' ? window.location.hostname : 'Server'}</div>
-        </div>
-      )}
-
-      {/* Admin Cards Dialog */}
-      <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
-      <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader><div className="flex flex-col md:flex-row h-[600px]"><div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3><div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">{supportSessions.map(s => (<div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}><div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div><div className="text-[10px] truncate opacity-60">{s.last_message}</div></div>))}{supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}</div></div><div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">{activeSessionUser ? (<><div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">{supportMessages.map(m => (<div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div></div>))}<div ref={supportScrollRef} /></div><div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/><Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button></div></>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}</div></div></DialogContent></Dialog>
-      <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
-
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-10 pb-32">
-        <div className="max-w-3xl mx-auto space-y-10">
-          
-          {/* ✅ [修复] 欢迎界面 & 大冰块 - 移除动画，强制高度，确保可见 */}
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-20 text-center min-h-[50vh]">
-                <div className={`w-20 h-20 rounded-3xl flex items-center justify-center text-5xl mb-8 shadow-2xl font-bold ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>
-                  🧊
+    <div className={`flex min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden`}>
+      
+      {/* ✅ [新增] 左侧侧边栏 */}
+      <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col shrink-0 overflow-hidden relative z-20`}>
+         <div className="p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
+            <Button onClick={startNewChat} className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"><Plus size={16}/> 开启新对话</Button>
+         </div>
+         <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
+            {chatList.map(chat => (
+                <div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}>
+                    <div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div>
+                    <button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button>
                 </div>
-                <h2 className="text-4xl font-black mb-12 tracking-tight text-slate-800 dark:text-slate-100">
-                  有什么可以帮您的？
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
-                  {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
-                    <button 
-                      key={idx} 
-                      onClick={() => handleSend(null, txt)} 
-                      className={`flex items-center justify-center p-6 border rounded-3xl hover:border-slate-300 transition-all text-sm font-bold shadow-sm h-24 text-center leading-relaxed ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      {txt}
-                    </button>
-                  ))}
+            ))}
+            {chatList.length === 0 && <div className="text-center text-[10px] text-slate-300 py-10">暂无历史记录</div>}
+         </div>
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+            <div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
+                <div className="flex-1 overflow-hidden">
+                    <div className="font-bold text-xs truncate">{user.nickname}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">${user.balance}</div>
                 </div>
             </div>
+         </div>
+      </div>
+
+      {/* 右侧主聊天区 */}
+      <div className="flex-1 flex flex-col h-screen relative">
+          
+          {/* 顶部导航 */}
+          <div className={`h-14 flex items-center justify-between px-4 border-b shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+            <div className="flex items-center gap-2">
+                <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Server size={18} className="rotate-90"/></button>
+                <div className="font-bold text-sm text-slate-400 flex items-center gap-2">{currentChatId ? '历史对话' : '新对话'}</div>
+            </div>
+            <div className="flex items-center gap-2">
+                <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button>
+            </div>
+          </div>
+
+          {/* 聊天内容区 */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
+             <div className="max-w-3xl mx-auto space-y-6">
+                {/* 欢迎语 */}
+                {messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'} text-white`}>🧊</div>
+                        <h2 className="text-2xl font-black mb-8">有什么可以帮您的？</h2>
+                        <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                            {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
+                                <button key={idx} onClick={() => handleSend(null, txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>{txt}</button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* 消息列表 */}
+                {messages.map((m, i) => {
+                    const { cleanText, suggestions } = parseMessageContent(m.content);
+                    return (
+                        <div key={i} className={`flex gap-3 ${m.role==='user'?'justify-end':'justify-start'}`}>
+                            {m.role!=='user' && <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs shrink-0">🧊</div>}
+                            <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100')}`}>
+                                {m.role === 'user' && typeof m.content === 'object' ? (
+                                    <div className="space-y-2">
+                                        {m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}
+                                        <div className="text-sm">{m.content.text}</div>
+                                    </div>
+                                ) : (
+                                    <div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}>
+                                        <ReactMarkdown>{cleanText}</ReactMarkdown>
+                                        {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSend(null,q)} />}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+                {isLoading && <Thinking modelName={model} />}
+                <div ref={scrollRef} className="h-4" />
+             </div>
+          </div>
+
+          {/* 输入框区 */}
+          <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}>
+             <div className="max-w-3xl mx-auto">
+                 <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
+             </div>
+          </div>
+
+          {/* 弹窗 (Profile, Admin, Support) */}
+          <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
+          
+          <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
+          
+          {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
+          
+          {isSupportOpen && (
+              <div className="fixed right-6 bottom-24 z-50 w-80 h-96 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl flex flex-col overflow-hidden border dark:border-slate-800">
+                  <div className="p-3 bg-blue-600 text-white flex justify-between items-center"><span className="font-bold text-xs">客服</span><button onClick={()=>setIsSupportOpen(false)}><X size={14}/></button></div>
+                  <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                      {supportMessages.map(m=><div key={m.id} className={`p-2 rounded-lg text-xs max-w-[80%] ${m.is_admin ? 'bg-slate-100 dark:bg-slate-800 self-start' : 'bg-blue-100 text-blue-800 self-end ml-auto'}`}>{m.content}</div>)}
+                      <div ref={supportScrollRef}/>
+                  </div>
+                  <div className="p-2 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} className="h-8 text-xs"/><Button size="icon" className="h-8 w-8" onClick={sendSupportMessage}><Send size={12}/></Button></div>
+              </div>
+          )}
+          
+          {user?.role === 'admin' && (
+              <div className="fixed right-6 bottom-6 flex gap-2 z-50">
+                  <Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}}>卡密管理</Button>
+                  <Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}}>客服后台</Button>
+              </div>
           )}
 
-          {messages.map((m, i) => {
-            const { cleanText, suggestions } = parseMessageContent(m.content);
-            return (
-              <div key={i} className={`flex gap-4 ${m.role==='user'?'justify-end':'justify-start'}`}>
-                {m.role!=='user' && <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs font-bold ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'}`}>🧊</div>}
-                <div className="max-w-[85%] flex flex-col gap-2">
-                  <div className={`rounded-2xl px-5 py-3 shadow-sm ${m.role==='user' ? (isDarkMode ? 'bg-slate-800 text-slate-100' : 'bg-slate-100 text-slate-900') : (isDarkMode ? 'bg-slate-900 border border-slate-800 text-slate-200' : 'bg-white border border-slate-100 text-slate-900')}`}>
-                    {m.role === 'user' && typeof m.content === 'object' ? (
-                      <div className="space-y-3 text-sm">
-                        {m.content.images?.length > 0 && <div className="grid grid-cols-2 gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="rounded-xl aspect-square object-cover border" alt="up"/>))}</div>}
-                        <p className="leading-relaxed font-medium">{m.content.text}</p>
-                      </div>
-                    ) : (
-                      <div>
-                        <div className={`prose prose-sm max-w-none leading-relaxed font-medium ${isDarkMode ? 'prose-invert text-slate-200' : 'text-slate-800'}`}>
-                          <ReactMarkdown>{cleanText}</ReactMarkdown>
-                        </div>
-                        {suggestions.length > 0 && (
-                          <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-2">
-                            <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase mb-1">
-                              <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 猜你想问
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {suggestions.map((q, idx) => (
-                                <button 
-                                  key={idx} 
-                                  onClick={() => handleChatSubmit(q, [], model)} 
-                                  className="group flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left"
-                                >
-                                  <span>{q}</span><ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {m.role!=='user' && <div className="mt-3 pt-2 border-t border-slate-50/10 flex justify-end"><button onClick={async () => { await navigator.clipboard.writeText(cleanText); alert("已复制"); }} className="text-gray-400 hover:text-blue-600"><Copy size={12}/></button></div>}
-                  </div>
-                </div>
-                {m.role==='user' && <div className={`w-8 h-8 rounded-full flex items-center justify-center mt-1 shrink-0 font-black text-[10px] shadow-md ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>{user.nickname[0]}</div>}
-              </div>
-            );
-          })}
-          {isLoading && <Thinking modelName={model} />}
-          <div ref={scrollRef} className="h-4" />
-        </div>
-      </div>
+          {/* Admin Dialogs */}
+          <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
+          <Dialog open={isAdminSupportOpen} onOpenChange={setIsAdminSupportOpen}><DialogContent className={`sm:max-w-4xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className="sr-only"><DialogTitle>客服会话管理</DialogTitle></DialogHeader><div className="flex flex-col md:flex-row h-[600px]"><div className={`w-full md:w-1/3 h-[180px] md:h-full border-b md:border-b-0 md:border-r p-4 overflow-y-auto ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><h3 className="font-black text-sm mb-4 flex items-center justify-between mr-8"><span className="flex items-center gap-2"><MessageCircle size={16}/> 会话列表</span><Button size="icon" variant="ghost" className="h-6 w-6" onClick={fetchSupportSessions}><RefreshCw size={12}/></Button></h3><div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-x-hidden pb-2 md:pb-0">{supportSessions.map(s => (<div key={s.user_id} onClick={()=>setActiveSessionUser(s.user_id)} className={`flex-shrink-0 w-40 md:w-full p-3 rounded-xl cursor-pointer transition-all border ${activeSessionUser===s.user_id ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : (isDarkMode ? 'bg-slate-950 border-slate-800 hover:bg-slate-800' : 'bg-slate-50 border-slate-100 hover:bg-slate-100')}`}><div className="flex justify-between items-center mb-1"><span className="font-bold text-xs truncate max-w-[80px]">{s.nickname || s.user_id}</span>{s.unread > 0 && <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">{s.unread}</span>}</div><div className="text-[10px] truncate opacity-60">{s.last_message}</div></div>))}{supportSessions.length === 0 && <div className="text-center text-[10px] opacity-40 py-10 w-full">暂无咨询，点击刷新</div>}</div></div><div className="flex-1 flex flex-col bg-slate-50/50 dark:bg-slate-950/50 relative min-h-0">{activeSessionUser ? (<><div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">{supportMessages.map(m => (<div key={m.id} className={`flex ${m.is_admin ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium shadow-sm ${m.is_admin ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800')}`}>{m.content}</div></div>))}<div ref={supportScrollRef} /></div><div className="p-4 border-t dark:border-slate-800 bg-white dark:bg-slate-900 flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="回复用户..." className="border-none bg-slate-100 dark:bg-slate-950"/><Button onClick={sendSupportMessage} size="icon" className="bg-blue-600"><Send size={16}/></Button></div></>) : (<div className="flex-1 flex items-center justify-center text-slate-400 text-xs">👈 👆 请选择一个会话</div>)}</div></div></DialogContent></Dialog>
+          <Dialog open={!!selectedAdminUser} onOpenChange={() => setSelectedAdminUser(null)}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-8 border-b flex justify-between items-center ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-2xl font-black">{selectedAdminUser?.nickname} 详情</DialogTitle><div className="text-right text-green-500 font-black text-3xl">${selectedAdminUser?.balance}</div></DialogHeader>{selectedAdminUser && <div className="flex-1 overflow-y-auto p-8 space-y-3">{(adminUserTx.length > 0 ? adminUserTx : []).map((tx:any) => (<div key={tx.id} className={`flex justify-between items-center p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="flex flex-col gap-1"><span className="text-xs font-bold">{tx.description}</span><span className="text-xs font-mono opacity-60 flex items-center gap-1"><FileText size={10}/> {tx.time}</span></div><span className={`font-bold ${tx.type==='consume'?'text-red-500':'text-green-500'}`}>{tx.type==='consume'?'-':'+'}${tx.amount}</span></div>))}{adminUserTx.length === 0 && <div className="text-center text-xs opacity-50 py-10">暂无消费记录</div>}</div>}</DialogContent></Dialog>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-2 pt-10 z-10">
-        <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
       </div>
-
-      {user?.role === 'user' && (
-        <div className="fixed right-6 bottom-6 z-40">
-            {!isSupportOpen ? (
-              <button onClick={()=>setIsSupportOpen(true)} className="w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 animate-in zoom-in slide-in-from-bottom-10">
-                <MessageCircle size={28} fill="currentColor" className="text-white"/>
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
-              </button>
-            ) : (
-              <Card className={`w-80 h-[450px] shadow-2xl border-none flex flex-col rounded-[24px] overflow-hidden animate-in zoom-in slide-in-from-bottom-10 origin-bottom-right ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
-                 <div className="p-4 bg-blue-600 text-white flex justify-between items-center shrink-0">
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">👩‍💼</div>
-                     <div><div className="font-bold text-sm">Eureka 官方客服</div><div className="text-[10px] opacity-80 flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span> 在线中</div></div>
-                   </div>
-                   <button onClick={()=>setIsSupportOpen(false)} className="opacity-80 hover:opacity-100"><X size={18}/></button>
-                 </div>
-                 <div className={`flex-1 overflow-y-auto p-4 space-y-3 ${isDarkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
-                   <div className="text-center text-[10px] text-slate-400 my-2">- 官方客服已接入会话 -</div>
-                   {supportMessages.map(m => (
-                     <div key={m.id} className={`flex ${m.is_admin ? 'justify-start' : 'justify-end'}`}>
-                        {m.is_admin && <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold mr-2 mt-1">E</div>}
-                        <div className={`max-w-[80%] p-2.5 rounded-2xl text-xs font-medium shadow-sm leading-relaxed ${m.is_admin ? (isDarkMode ? 'bg-slate-800 text-slate-200' : 'bg-white text-slate-800') : 'bg-blue-600 text-white'}`}>{m.content}</div>
-                     </div>
-                   ))}
-                   <div ref={supportScrollRef} />
-                 </div>
-                 <div className={`p-3 border-t shrink-0 flex gap-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                    <Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') sendSupportMessage()}} placeholder="描述您的问题..." className="h-9 text-xs border-none bg-slate-100 dark:bg-slate-950"/>
-                    <Button onClick={sendSupportMessage} size="icon" className="h-9 w-9 bg-blue-600 rounded-xl"><Send size={14}/></Button>
-                 </div>
-              </Card>
-            )}
-        </div>
-      )}
     </div>
   );
 }
-
