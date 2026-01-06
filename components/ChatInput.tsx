@@ -12,13 +12,57 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 
 // ✅ [配置保留] 全平台模型配置
+// ✅ [前端配置] 隐藏价格，强调能力与定位
 export const MODEL_OPTIONS = [
-  { id: "gemini-2.0-flash-exp", name: "Gemini 2.0 Flash", desc: "速度快，低成本", icon: Zap, color: "text-blue-500", type: "text" },
-  { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", desc: "逻辑强，长文本", icon: Star, color: "text-purple-500", type: "text" },
-  { id: "gemini-2.0-flash-thinking-exp", name: "Gemini Thinking", desc: "深度思考模式", icon: Brain, color: "text-indigo-500", type: "text" },
-  { id: "sora-v1", name: "OpenAI Sora", desc: "视频生成 (VIP)", icon: Video, color: "text-red-500", type: "video" },
-  { id: "veo-google", name: "Google Veo", desc: "视频生成", icon: Video, color: "text-green-500", type: "video" },
-  { id: "banana-sdxl", name: "Banana SDXL", desc: "极速绘图", icon: ImageIcon, color: "text-yellow-500", type: "image" },
+  { 
+    id: "gemini-2.0-flash-exp", // 对应后端: gemini-2.5-flash
+    name: "Gemini 2.5 Flash", 
+    desc: "轻量级 | 极速响应，日常助手", // 强调：轻量、快
+    icon: Zap, 
+    color: "text-blue-500", 
+    type: "text" 
+  },
+  { 
+    id: "gemini-1.5-pro", // 对应后端: gemini-2.5-pro
+    name: "Gemini 2.5 Pro", 
+    desc: "均衡型 | 强力逻辑，长文分析", // 强调：均衡、稳
+    icon: Star, 
+    color: "text-purple-500", 
+    type: "text" 
+  },
+  { 
+    id: "gemini-2.0-flash-thinking-exp", // 对应后端: gemini-exp-1206
+    name: "Gemini Exp Thinking", 
+    desc: "最强版 | 深度推理，解决难题", // 强调：最强、深思
+    icon: Brain, 
+    color: "text-indigo-500", 
+    type: "text" 
+  },
+  // 视频与绘图模型 (同样不标价格，只标用途)
+  { 
+    id: "sora-v1", 
+    name: "OpenAI Sora", 
+    desc: "视频生成 | 电影级画质 (VIP)", 
+    icon: Video, 
+    color: "text-red-500", 
+    type: "video" 
+  },
+  { 
+    id: "veo-google", 
+    name: "Google Veo", 
+    desc: "视频生成 | 创意短片制作", 
+    icon: Video, 
+    color: "text-green-500", 
+    type: "video" 
+  },
+  { 
+    id: "banana-sdxl", 
+    name: "Banana SDXL", 
+    desc: "极速绘图 | 艺术创作引擎", 
+    icon: ImageIcon, 
+    color: "text-yellow-500", 
+    type: "image" 
+  },
 ];
 
 // ✅ [配置保留] 角色预设
