@@ -10,7 +10,8 @@ import {
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
-  FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown
+  FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
+  Wallet, PieChart, Video, Image as ImageIcon, Clock
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -43,7 +44,6 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ✅ [优化] 代码块专用的复制按钮（带样式）
 const CodeHeader = ({ lang, text }: { lang: string, text: string }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
@@ -65,11 +65,9 @@ const CodeHeader = ({ lang, text }: { lang: string, text: string }) => {
   );
 };
 
-// ✅ [新增] 消息底部工具栏 (复制全文)
 const MessageActions = ({ content }: { content: string }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {
-        // 提取纯文本内容（去除可能的 HTML 标签或 Markdown 符号的简单处理）
         navigator.clipboard.writeText(content);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -265,7 +263,6 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
   );
 }
 
-// ✅ [完整修正版] 主程序
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true); 
@@ -275,6 +272,9 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
+  // ✅ [新增] 个人中心 Tab 状态 ('wallet' | 'history' | 'sora' | 'veo' | 'banana')
+  const [profileTab, setProfileTab] = useState('wallet');
+
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("gemini-2.0-flash-exp");
@@ -475,8 +475,11 @@ export default function Home() {
     roleId: string = "general" 
   ) => {
     setModel(modelId);
+    
+    // ✅ [埋点升级] 把用户输入的前15个字记录到消费描述里，方便在个人中心查看
+    const desc = `使用 ${modelId}: ${text.slice(0, 15)}${text.length > 15 ? '...' : ''}`;
     const cost = MODEL_PRICING[modelId] || 0.01;
-    const success = await handleTX('consume', cost, `使用 ${modelId}`);
+    const success = await handleTX('consume', cost, desc);
     if (!success) return; 
 
     setIsLoading(true);
@@ -484,7 +487,6 @@ export default function Home() {
     const processedImages: string[] = [];
     const fileInfos: {name: string, type: string}[] = []; 
     
-    // 智能判断
     let systemInstruction = "";
     const isTableRequest = /表格|excel|csv|清单|统计/i.test(text);
     const isDocRequest = /word|文档|报告|大纲|下载/i.test(text) && !isTableRequest;
@@ -493,6 +495,8 @@ export default function Home() {
         systemInstruction = "\n\n(SYSTEM: Output result strictly as a CSV code block for Excel.)";
     } else if (isDocRequest) {
         systemInstruction = "\n\n(SYSTEM: The user wants a downloadable document. Wrap your response in a code block with language 'document'. Do NOT use other formats.)";
+    } else {
+        systemInstruction = "\n\n(SYSTEM: You only have access to the last 10 interaction turns. If the user asks to modify a code file or document that is NOT visible in this recent history, DO NOT hallucinate or guess. Instead, politely ask the user to provide the file content/code again.)";
     }
 
     let appendedText = text + systemInstruction;
@@ -528,7 +532,7 @@ export default function Home() {
         }
         else if (
             file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".csv") || 
-            file.name.endsWith(".md") || file.name.endsWith(".json") || file.name.endsWith(".js") || file.name.endsWith(".py")
+            file.name.endsWith(".md") || file.name.endsWith(".json") || file.name.endsWith(".js") || file.name.endsWith(".py") || file.name.endsWith(".tsx") || file.name.endsWith(".ts")
         ) {
            const reader = new FileReader();
            const textContent = await new Promise<string>((resolve) => { reader.onload = (e) => resolve(e.target?.result as string); reader.readAsText(file); });
@@ -541,8 +545,7 @@ export default function Home() {
     const newHistory = [...messages, newUserMsg];
     setMessages(newHistory); 
 
-    // ✅ [关键优化] 速度优化：只截取最近 20 条历史记录发给 AI
-    const recentHistory = newHistory.slice(-20);
+    const recentHistory = newHistory.slice(-10);
 
     const historyForAi = recentHistory.map(m => ({
       role: m.role,
@@ -584,9 +587,20 @@ export default function Home() {
 
   if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); fetchChatList(u.id); }} />;
 
+  // ✅ 辅助函数：判断记录是否在24小时内
+  const isWithin24Hours = (timeStr: string) => {
+    try {
+        // 假设 timeStr 格式为 "2024-01-01 12:00:00" 或者标准时间戳
+        const time = new Date(timeStr).getTime();
+        const now = new Date().getTime();
+        return (now - time) < 24 * 60 * 60 * 1000;
+    } catch (e) { return false; }
+  };
+
   return (
     <div className={`flex min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden`}>
       <Toast show={toastState.show} type={toastState.type} message={toastState.msg} />
+      {/* 侧边栏保持不变... */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col shrink-0 overflow-hidden relative z-20`}>
          <div className="p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
@@ -598,6 +612,8 @@ export default function Home() {
          </div>
          <div className="p-4 border-t border-slate-200 dark:border-slate-800"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">${user.balance}</div></div></div></div>
       </div>
+
+      {/* 主界面... */}
       <div className="flex-1 flex flex-col h-screen relative">
           <div className={`h-14 flex items-center justify-between px-4 border-b shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><div className="flex items-center gap-2"><button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Server size={18} className="rotate-90"/></button><div className="font-bold text-sm text-slate-400 flex items-center gap-2">{currentChatId ? '历史对话' : '新对话'}</div></div><div className="flex items-center gap-2"><button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button></div></div>
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
@@ -618,30 +634,20 @@ export default function Home() {
                                                 const match = /language-(\w+)/.exec(className || '');
                                                 const text = String(children).replace(/\n$/, '');
                                                 const isGenerating = isLoading && i === messages.length - 1; 
-
-                                                // CSV 表格卡片
+                                                // CSV
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
                                                       return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-amber-600' : 'text-green-700 dark:text-green-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}<span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 数据写入中...</div></div>}<Button onClick={() => handlePreviewTable(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadExcel(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 导出 Excel</Button></div></div>)
                                                     }
                                                 }
-
-                                                // Word 文档卡片
+                                                // Word
                                                 if (!inline && match?.[1] === 'document') {
                                                     return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handlePreviewDoc(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word</Button></div></div>)
                                                 }
-
-                                                // ✅ [优化] 普通代码块渲染
+                                                // Code
                                                 if (!inline) {
-                                                    return (
-                                                        <div className="relative my-4 rounded-xl overflow-hidden border border-gray-700 bg-[#1e1e1e] shadow-lg">
-                                                            <CodeHeader lang={match?.[1] || 'text'} text={text} />
-                                                            <pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed text-[#d4d4d4]">
-                                                                <code className={className} {...props}>{children}</code>
-                                                            </pre>
-                                                        </div>
-                                                    )
+                                                    return (<div className="relative my-4 rounded-xl overflow-hidden border border-gray-700 bg-[#1e1e1e] shadow-lg"><CodeHeader lang={match?.[1] || 'text'} text={text} /><pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed text-[#d4d4d4]"><code className={className} {...props}>{children}</code></pre></div>)
                                                 }
                                                 return <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-red-500 font-mono text-xs" {...props}>{children}</code>
                                             },
@@ -653,10 +659,7 @@ export default function Home() {
                                         >
                                             {cleanText}
                                         </ReactMarkdown>
-                                        
-                                        {/* ✅ [新增] 底部工具栏 */}
                                         <MessageActions content={cleanText} />
-
                                         {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSendSimple(q)} />}
                                     </div>
                                 )}
@@ -675,7 +678,118 @@ export default function Home() {
           
           <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}><DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900"><div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10"><h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3><Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button></div><div className="flex-1 overflow-y-auto p-8"><div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200"><div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">{previewDocData}</div></div></div></DialogContent></Dialog>
 
-          <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
+          {/* ✅ [重构] 个人中心弹窗 - 带侧边栏和多功能 Tab */}
+          <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+            <DialogContent className="sm:max-w-4xl h-[600px] p-0 overflow-hidden border-none rounded-[24px] shadow-2xl bg-white dark:bg-slate-950 flex flex-row">
+                {/* 左侧导航栏 */}
+                <div className="w-64 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col p-6">
+                    <div className="flex flex-col items-center mb-8">
+                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg">
+                            {user.nickname?.[0]}
+                        </div>
+                        <h2 className="font-black text-lg text-slate-800 dark:text-white">{user.nickname}</h2>
+                        <p className="text-xs text-slate-400 font-mono mt-1">{user.account}</p>
+                    </div>
+                    
+                    <nav className="flex-1 space-y-1">
+                        <button onClick={()=>setProfileTab('wallet')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='wallet' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <Wallet size={16}/> 我的钱包
+                        </button>
+                        <button onClick={()=>setProfileTab('history')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='history' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <PieChart size={16}/> 消费明细
+                        </button>
+                        <div className="my-4 h-[1px] bg-slate-200 dark:bg-slate-800 mx-2"/>
+                        <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">生成记录 (24h)</div>
+                        <button onClick={()=>setProfileTab('sora')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='sora' ? 'bg-white dark:bg-slate-800 text-red-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <Video size={16}/> Sora 视频
+                        </button>
+                        <button onClick={()=>setProfileTab('veo')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='veo' ? 'bg-white dark:bg-slate-800 text-green-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <Video size={16}/> Veo 视频
+                        </button>
+                        <button onClick={()=>setProfileTab('banana')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='banana' ? 'bg-white dark:bg-slate-800 text-yellow-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <ImageIcon size={16}/> Banana 绘图
+                        </button>
+                    </nav>
+
+                    <Button onClick={handleLogout} variant="ghost" className="mt-4 w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 text-xs">
+                        <LogOut size={16}/> 退出登录
+                    </Button>
+                </div>
+
+                {/* 右侧内容区 */}
+                <div className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-950">
+                    {/* 钱包 Tab */}
+                    {profileTab === 'wallet' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><Wallet/> 我的钱包</h3>
+                            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl">
+                                <div className="text-xs opacity-70 mb-1 font-bold uppercase tracking-wider">当前余额</div>
+                                <div className="text-5xl font-black font-mono tracking-tight">${user.balance}</div>
+                            </div>
+                            <Button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="w-full h-12 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
+                                立即充值
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* 消费明细 Tab */}
+                    {profileTab === 'history' && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><PieChart/> 消费明细</h3>
+                            <div className="space-y-2">
+                                {transactions.filter(t=>t.type==='consume').map((tx, i) => (
+                                    <div key={i} className="flex justify-between items-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{tx.description}</span>
+                                            <span className="text-[10px] text-slate-400 font-mono">{tx.time}</span>
+                                        </div>
+                                        <span className="font-bold text-red-500 font-mono text-sm">-${tx.amount}</span>
+                                    </div>
+                                ))}
+                                {transactions.filter(t=>t.type==='consume').length === 0 && <div className="text-center text-xs text-slate-400 py-10">暂无消费记录</div>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 媒体记录 Tabs (Sora, Veo, Banana) */}
+                    {['sora', 'veo', 'banana'].includes(profileTab) && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
+                                {profileTab==='sora' && <Video className="text-red-500"/>}
+                                {profileTab==='veo' && <Video className="text-green-500"/>}
+                                {profileTab==='banana' && <ImageIcon className="text-yellow-500"/>}
+                                {profileTab.charAt(0).toUpperCase() + profileTab.slice(1)} 生成记录
+                            </h3>
+                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl text-xs font-bold flex items-center gap-2">
+                                <Clock size={14}/> 仅显示最近 24 小时内的生成记录，过期自动销毁。
+                            </div>
+                            <div className="space-y-3">
+                                {transactions
+                                    .filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time))
+                                    .map((tx, i) => (
+                                    <div key={i} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">{tx.time}</span>
+                                            <span className="text-xs font-mono font-bold text-red-500">-${tx.amount}</span>
+                                        </div>
+                                        <div className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
+                                            {tx.description.replace(`使用 ${profileTab}-`, '').replace('v1', '').replace('google', '').replace('sdxl', '')}
+                                        </div>
+                                    </div>
+                                ))}
+                                {transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).length === 0 && (
+                                    <div className="text-center py-10">
+                                        <div className="text-4xl mb-2 opacity-20">🗑️</div>
+                                        <div className="text-xs text-slate-400">暂无 24h 内的生成记录</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
           {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
           {isSupportOpen && (<div className="fixed right-6 bottom-24 z-50 w-80 h-96 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl flex flex-col overflow-hidden border dark:border-slate-800"><div className="p-3 bg-blue-600 text-white flex justify-between items-center"><span className="font-bold text-xs">客服</span><button onClick={()=>setIsSupportOpen(false)}><X size={14}/></button></div><div className="flex-1 overflow-y-auto p-3 space-y-2">{supportMessages.map(m=><div key={m.id} className={`p-2 rounded-lg text-xs max-w-[80%] ${m.is_admin ? 'bg-slate-100 dark:bg-slate-800 self-start' : 'bg-blue-100 text-blue-800 self-end ml-auto'}`}>{m.content}</div>)}<div ref={supportScrollRef}/></div><div className="p-2 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} className="h-8 text-xs"/><Button size="icon" className="h-8 w-8" onClick={sendSupportMessage}><Send size={12}/></Button></div></div>)}
