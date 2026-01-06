@@ -10,7 +10,7 @@ import {
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
-  FileSpreadsheet, Download, Maximize2 
+  FileSpreadsheet, Download, Maximize2, Lock as LockIcon // ✅ 新增 Lock 图标
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -416,7 +416,8 @@ export default function Home() {
 
     const processedImages: string[] = [];
     const fileInfos: {name: string, type: string}[] = []; 
-    let appendedText = text; 
+    // ✅ [关键修改] 强制注入系统指令，让 AI 只输出数据，不废话，只用 CSV 格式
+    let appendedText = text + "\n\n(IMPORTANT SYSTEM INSTRUCTION: If the user asks for data analysis, extraction, or table generation, you MUST output the result strictly as a CSV code block. Do NOT use Markdown tables. Do NOT provide conversational filler or analysis unless explicitly asked. Just provide the data.)";
 
     if (attachments.length > 0) {
       for (const file of attachments) {
@@ -637,36 +638,39 @@ export default function Home() {
                                             code({node, inline, className, children, ...props}: any) {
                                                 const match = /language-(\w+)/.exec(className || '');
                                                 const text = String(children).replace(/\n$/, '');
-                                                const isGenerating = isLoading && i === messages.length - 1; // ✅ [关键] 判断是否正在生成
+                                                const isGenerating = isLoading && i === messages.length - 1; 
 
-                                                // CSV 表格卡片
+                                                // ✅ [关键修改] 强制识别 CSV 格式，并显示“高级文件卡片”
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
                                                       return (
                                                         <div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
-                                                            <div className="bg-green-50 dark:bg-green-900/20 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                                                                <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-bold text-xs">
+                                                            <div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
+                                                                <div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-amber-600' : 'text-green-700 dark:text-green-400'}`}>
                                                                     {isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}
                                                                     <span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span>
                                                                 </div>
                                                                 <span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span>
                                                             </div>
-                                                            <div className="p-4 flex gap-3">
+                                                            <div className="p-4 flex gap-3 relative">
+                                                                {/* 遮罩层：生成时禁止点击 */}
+                                                                {isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 数据写入中...</div></div>}
+                                                                
                                                                 <Button 
                                                                     onClick={() => handlePreviewTable(text)} 
                                                                     variant="outline" 
-                                                                    disabled={isGenerating} // ✅ [防呆] 生成中禁用
+                                                                    disabled={isGenerating} 
                                                                     className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900"
                                                                 >
-                                                                    {isGenerating ? <Loader2 size={14} className="animate-spin"/> : <Maximize2 size={14} />} 在线预览
+                                                                    {isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览
                                                                 </Button>
                                                                 <Button 
                                                                     onClick={() => handleDownloadExcel(text)} 
-                                                                    disabled={isGenerating} // ✅ [防呆] 生成中禁用
+                                                                    disabled={isGenerating} 
                                                                     className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}
                                                                 >
-                                                                    {isGenerating ? <Loader2 size={14} className="animate-spin"/> : <Download size={14} />} 导出 Excel
+                                                                    {isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 导出 Excel
                                                                 </Button>
                                                             </div>
                                                         </div>
@@ -720,18 +724,18 @@ export default function Home() {
              </div>
           </div>
 
-          {/* ✅ [修复] 预览弹窗：加宽、加高、加滚动条 */}
+          {/* ✅ [修复] 宽屏预览弹窗 + 固定表头 + 滚动条 */}
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <DialogContent className="max-w-[90vw] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden">
+            <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden">
                 <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0">
                     <h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3>
                     <Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button>
                 </div>
-                <div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950">
+                <div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">
                     {previewTableData && (
-                        <div className="min-w-full inline-block align-middle">
+                        <div className="absolute inset-0 overflow-auto">
                             <table className="min-w-full text-sm text-left border-collapse">
-                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-10 shadow-sm">
+                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm">
                                     <tr>
                                         {previewTableData.split('\n')[0].split(',').map((h, i) => (
                                             <th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>
@@ -742,7 +746,7 @@ export default function Home() {
                                     {previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (
                                         <tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             {row.split(',').map((cell, j) => (
-                                                <td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[100px]">{cell}</td>
+                                                <td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>
                                             ))}
                                         </tr>
                                     ))}
