@@ -56,6 +56,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
   const [files, setFiles] = useState<File[]>([])
   
   const availableModels = ALL_MODELS.filter(m => allowedCategories.includes(m.category));
+  // 默认选中 2.5 Pro，比较均衡
   const defaultModelID = availableModels.find(m => m.id === "gemini-2.5-pro") ? "gemini-2.5-pro" : (availableModels[0]?.id || "");
   const [selectedModel, setSelectedModel] = useState(defaultModelID);
   
