@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-// 这里的 API Key 复用你环境变量里的那个，不用改
+// 初始化 Google AI
 const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -9,35 +9,25 @@ export const runtime = "edge";
 
 export async function POST(req: Request) {
   try {
-    const { text } = await req.json();
+    const { prompt } = await req.json();
 
-    if (!text) {
+    if (!prompt) {
       return NextResponse.json({ error: "请输入内容" }, { status: 400 });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+    // 使用 Flash 模型来快速生成提示词，成本低且速度快
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash",
+      systemInstruction: "你是一位精通 Prompt Engineering（提示词工程）的专家。用户的输入可能是一个模糊的问题或简短的想法。你的任务是将其重写为一个结构清晰、逻辑严密、细节丰富的 AI 提示词（Prompt）。\n\n要求：\n1. 直接输出优化后的提示词内容，不要包含'好的'、'这是优化后的内容'等废话。\n2. 保持语言与用户输入一致（用户输中文就回中文）。\n3. 适当补充背景信息、角色设定和输出要求，以便让后续的大模型输出更好的结果。"
+    });
 
-    // ⚡️ 这里是“提示词工程师”的系统指令
-    const systemPrompt = `
-      你是一个专业的 Prompt Engineer (提示词工程师)。
-      你的任务是将用户输入的简短、模糊的需求，改写成结构清晰、细节丰富、能引导 AI 输出高质量结果的优质指令（Prompt）。
-      
-      要求：
-      1. 保持用户的原意不变，但进行扩充和润色。
-      2. 增加必要的上下文、语气要求、输出格式要求。
-      3. **直接输出优化后的指令内容**，不要包含任何"好的"、"这是优化后的..."等废话。
-      4. 语言保持与用户输入一致（如果是中文就用中文）。
-      
-      用户输入: "${text}"
-    `;
+    const result = await model.generateContent(prompt);
+    const optimizedText = result.response.text();
 
-    const result = await model.generateContent(systemPrompt);
-    const response = await result.response;
-    const optimizedText = response.text();
+    return NextResponse.json({ optimized: optimizedText });
 
-    return NextResponse.json({ optimizedText });
-  } catch (error) {
-    console.error("Optimization error:", error);
-    return NextResponse.json({ error: "优化失败" }, { status: 500 });
+  } catch (error: any) {
+    console.error("Optimization Error:", error);
+    return NextResponse.json({ error: "优化服务暂时不可用，请检查 Key 或网络。" }, { status: 500 });
   }
 }

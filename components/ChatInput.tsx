@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react"
-import { Send, Paperclip, X, Image as ImageIcon, FileText, ChevronDown, Sparkles, Loader2, Copy, Check, ArrowRight } from "lucide-react"
+import { Send, Paperclip, X, Image as ImageIcon, FileText, ChevronDown, Sparkles, Loader2, Copy, ArrowRight, Wand2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 // 📦 模型配置
 export const ALL_MODELS = [
   // --- 文本模型 ---
   { 
-    id: "gemini-exp-1206", // 👈 把最强模型放在第一位，作为默认
+    id: "gemini-exp-1206", // ✅ 默认最强
     name: "Gemini Thinking", 
     desc: "最强版 | 深度推理，解决难题", 
     category: "text"
@@ -56,13 +56,14 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
   const [files, setFiles] = useState<File[]>([])
   
   const availableModels = ALL_MODELS.filter(m => allowedCategories.includes(m.category));
-  // ✅ 默认选中列表里的第一个（现在是 Thinking 最强模型）
-  const [selectedModel, setSelectedModel] = useState(availableModels[0]?.id || "")
+  // ✅ 逻辑：如果允许的分类里有Thinking模型，就默认选中它，否则选中第一个
+  const defaultModelID = availableModels.find(m => m.id === "gemini-exp-1206") ? "gemini-exp-1206" : (availableModels[0]?.id || "");
+  const [selectedModel, setSelectedModel] = useState(defaultModelID);
   
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   
-  // ✨ 帮我写功能的状态
-  const [isOptimizeOpen, setIsOptimizeOpen] = useState(false)
+  // ✨ 帮我写 - 状态管理
+  const [isOptimizeModalOpen, setIsOptimizeModalOpen] = useState(false)
   const [optimizeInput, setOptimizeInput] = useState("")
   const [optimizedResult, setOptimizedResult] = useState("")
   const [isOptimizing, setIsOptimizing] = useState(false)
@@ -70,16 +71,12 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
-  const optimizeRef = useRef<HTMLDivElement>(null)
 
-  // 点击外部关闭弹窗
+  // 点击外部关闭模型菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsModelMenuOpen(false);
-      }
-      if (optimizeRef.current && !optimizeRef.current.contains(event.target as Node)) {
-        setIsOptimizeOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -119,11 +116,11 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // ✨ 执行“帮我写”优化
+  // ✨ 核心功能：调用后台 API 进行优化
   const handleRunOptimize = async () => {
     if (!optimizeInput.trim()) return;
     setIsOptimizing(true);
-    setOptimizedResult(""); // 清空旧结果
+    setOptimizedResult(""); 
     try {
         const res = await fetch('/api/optimize', {
             method: 'POST',
@@ -137,7 +134,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
             setOptimizedResult("优化失败，请稍后再试。");
         }
     } catch (error) {
-        setOptimizedResult("网络请求错误。");
+        setOptimizedResult("网络请求错误，请检查网络连接。");
     } finally {
         setIsOptimizing(false);
     }
@@ -150,10 +147,11 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     setTimeout(() => setIsCopied(false), 2000);
   }
 
-  // 填入输入框
-  const handleUse = () => {
-    setInput(optimizedResult);
-    setIsOptimizeOpen(false);
+  // 一键推送：直接填入主输入框并关闭弹窗
+  const handlePush = () => {
+    setInput(optimizedResult); // 填入
+    setIsOptimizeModalOpen(false); // 关闭弹窗
+    // 重置状态方便下次使用
     setOptimizeInput("");
     setOptimizedResult("");
   }
@@ -162,6 +160,63 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
 
   return (
     <div className="relative">
+      
+      {/* ✨ 全屏居中弹窗：帮我写 */}
+      {isOptimizeModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 m-4 scale-100 animate-in zoom-in-95 duration-200">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-black flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                        <Wand2 size={20} className="text-purple-600"/> 
+                        AI 提示词优化专家
+                    </h3>
+                    <button onClick={() => setIsOptimizeModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                        <X size={20} className="text-slate-400"/>
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-bold text-slate-500 mb-1.5 block">您的想法 (简单描述)</label>
+                        <textarea 
+                            value={optimizeInput}
+                            onChange={(e) => setOptimizeInput(e.target.value)}
+                            placeholder="例如：帮我写一段贪吃蛇游戏的 Python 代码..."
+                            className="w-full h-24 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none text-sm"
+                        />
+                    </div>
+
+                    <Button 
+                        onClick={handleRunOptimize} 
+                        disabled={isOptimizing || !optimizeInput.trim()}
+                        className="w-full h-10 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-90 text-white font-bold rounded-xl transition-all active:scale-95"
+                    >
+                        {isOptimizing ? <Loader2 className="animate-spin mr-2"/> : <Sparkles className="mr-2"/>}
+                        {isOptimizing ? "AI 正在思考重写..." : "开始优化"}
+                    </Button>
+
+                    {/* 结果显示区 */}
+                    {optimizedResult && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2">
+                            <label className="text-xs font-bold text-slate-500 mb-1.5 block">优化结果</label>
+                            <div className="p-4 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-800/30 text-sm text-slate-700 dark:text-slate-300 max-h-40 overflow-y-auto leading-relaxed whitespace-pre-wrap">
+                                {optimizedResult}
+                            </div>
+                            <div className="flex gap-3 mt-3">
+                                <Button onClick={handleCopy} variant="outline" className="flex-1 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                                    {isCopied ? "已复制" : <><Copy size={14} className="mr-2"/> 复制内容</>}
+                                </Button>
+                                <Button onClick={handlePush} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-500/20 border-none">
+                                    <ArrowRight size={14} className="mr-2"/> 一键推送
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* 📎 文件预览区域 */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto px-2">
@@ -195,7 +250,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
         {/* 底部工具栏 */}
         <div className="flex justify-between items-center px-2 pb-2">
             
-            {/* 左侧功能区：🔗 -> 🤖 -> ✨ */}
+            {/* 左侧功能区 */}
             <div className="flex items-center gap-2 relative">
                 
                 {/* 1. 🔗 附件按钮 */}
@@ -231,61 +286,15 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
                     )}
                 </div>
 
-                {/* 3. ✨ 帮我写 (常亮 + 弹窗) */}
-                <div className="relative" ref={optimizeRef}>
-                    <Button 
-                        variant="ghost" 
-                        onClick={() => setIsOptimizeOpen(!isOptimizeOpen)}
-                        className={`h-8 px-3 rounded-full flex items-center gap-1.5 transition-colors text-xs font-bold ${isOptimizeOpen ? 'bg-purple-100 text-purple-600' : 'text-slate-400 hover:text-purple-600 hover:bg-purple-50'}`}
-                    >
-                        <Sparkles size={14} />
-                        <span>帮我写</span>
-                    </Button>
-
-                    {/* ✨ 优化器弹窗 */}
-                    {isOptimizeOpen && (
-                        <div className="absolute bottom-full left-0 mb-2 w-80 p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-200 ring-1 ring-black/5">
-                            <div className="flex justify-between items-center mb-3">
-                                <h3 className="text-xs font-black uppercase text-purple-600 flex items-center gap-2"><Sparkles size={12}/> AI 提示词优化</h3>
-                                <button onClick={()=>setIsOptimizeOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={14}/></button>
-                            </div>
-                            
-                            <div className="space-y-3">
-                                <textarea 
-                                    value={optimizeInput}
-                                    onChange={(e)=>setOptimizeInput(e.target.value)}
-                                    placeholder="输入简单的想法，例如：帮我写个请假条..."
-                                    className="w-full h-20 text-xs p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-1 focus:ring-purple-500 resize-none"
-                                />
-                                <Button 
-                                    onClick={handleRunOptimize} 
-                                    disabled={isOptimizing || !optimizeInput.trim()}
-                                    className="w-full h-8 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg"
-                                >
-                                    {isOptimizing ? <Loader2 size={12} className="animate-spin mr-1"/> : <Sparkles size={12} className="mr-1"/>}
-                                    {isOptimizing ? "正在思考..." : "一键优化"}
-                                </Button>
-
-                                {/* 优化结果展示区 */}
-                                {optimizedResult && (
-                                    <div className="mt-3 p-3 bg-purple-50 dark:bg-purple-900/10 rounded-xl border border-purple-100 dark:border-purple-800/30">
-                                        <div className="text-xs text-slate-700 dark:text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                                            {optimizedResult}
-                                        </div>
-                                        <div className="flex gap-2 mt-2 pt-2 border-t border-purple-200/50">
-                                            <Button onClick={handleUse} size="sm" className="h-6 flex-1 bg-white text-purple-600 border border-purple-200 hover:bg-purple-50 text-[10px] font-bold shadow-sm">
-                                                <ArrowRight size={10} className="mr-1"/> 填入输入框
-                                            </Button>
-                                            <Button onClick={handleCopy} size="sm" variant="ghost" className="h-6 px-2 text-[10px] text-slate-500">
-                                                {isCopied ? <Check size={10}/> : <Copy size={10}/>}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-                </div>
+                {/* 3. ✨ 帮我写 (常亮 + 触发弹窗) */}
+                <Button 
+                    variant="ghost" 
+                    onClick={() => setIsOptimizeModalOpen(true)}
+                    className="h-8 px-3 rounded-full flex items-center gap-1.5 transition-colors text-xs font-bold text-slate-500 hover:text-purple-600 hover:bg-purple-50 dark:text-slate-400 dark:hover:bg-purple-900/20"
+                >
+                    <Sparkles size={14} className="text-purple-500"/>
+                    <span>帮我写</span>
+                </Button>
             </div>
 
             {/* 右侧：发送按钮 */}
