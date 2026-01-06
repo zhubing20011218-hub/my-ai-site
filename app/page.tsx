@@ -10,7 +10,7 @@ import {
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
-  FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType 
+  FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -22,7 +22,6 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
-// ✅ 模型定价表
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.0-flash-exp": 0.01,
   "gemini-1.5-pro": 0.05,
@@ -32,7 +31,6 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// ✅ Toast 提示组件
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success', show: boolean }) => {
   if (!show) return null;
   return (
@@ -45,8 +43,8 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ✅ 复制按钮
-const CopyButton = ({ text }: { text: string }) => {
+// ✅ [优化] 代码块专用的复制按钮（带样式）
+const CodeHeader = ({ lang, text }: { lang: string, text: string }) => {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
     navigator.clipboard.writeText(text);
@@ -54,13 +52,45 @@ const CopyButton = ({ text }: { text: string }) => {
     setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <button onClick={handleCopy} className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-all backdrop-blur-sm" title="复制代码">
-      {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-    </button>
+    <div className="flex justify-between items-center bg-[#2d2d2d] text-gray-300 px-4 py-2 text-xs border-b border-gray-700 select-none">
+        <span className="uppercase font-mono font-bold text-blue-400">{lang || 'CODE'}</span>
+        <button 
+            onClick={handleCopy} 
+            className="flex items-center gap-1 hover:text-white transition-colors"
+        >
+            {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+            <span>{copied ? "已复制" : "复制代码"}</span>
+        </button>
+    </div>
   );
 };
 
-// ✅ 图片压缩函数
+// ✅ [新增] 消息底部工具栏 (复制全文)
+const MessageActions = ({ content }: { content: string }) => {
+    const [copied, setCopied] = useState(false);
+    const handleCopy = () => {
+        // 提取纯文本内容（去除可能的 HTML 标签或 Markdown 符号的简单处理）
+        navigator.clipboard.writeText(content);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    return (
+        <div className="flex items-center gap-3 mt-2 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            <button 
+                onClick={handleCopy}
+                className="flex items-center gap-1 text-[10px] hover:text-blue-500 transition-colors"
+                title="复制全部内容"
+            >
+                {copied ? <Check size={12}/> : <Copy size={12}/>}
+                <span>{copied ? "已复制" : "复制答案"}</span>
+            </button>
+            <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700"></div>
+            <button className="hover:text-green-500 transition-colors"><ThumbsUp size={12}/></button>
+            <button className="hover:text-red-500 transition-colors"><ThumbsDown size={12}/></button>
+        </div>
+    );
+};
+
 const compressImage = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -253,7 +283,6 @@ export default function Home() {
   
   const [previewTableData, setPreviewTableData] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  // ✅ [新增] Word 预览状态
   const [previewDocData, setPreviewDocData] = useState<string | null>(null);
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
 
@@ -316,7 +345,6 @@ export default function Home() {
     }, 1500); 
   };
 
-  // ✅ 下载 Word
   const handleDownloadWord = (text: string) => {
     showToast('loading', '正在生成 Word 文档...');
     setTimeout(() => {
@@ -340,7 +368,6 @@ export default function Home() {
     }, 1500);
   };
 
-  // ✅ [新增] 预览 Word
   const handlePreviewDoc = (text: string) => {
     showToast('loading', '正在渲染文档...');
     setTimeout(() => {
@@ -514,7 +541,10 @@ export default function Home() {
     const newHistory = [...messages, newUserMsg];
     setMessages(newHistory); 
 
-    const historyForAi = newHistory.map(m => ({
+    // ✅ [关键优化] 速度优化：只截取最近 20 条历史记录发给 AI
+    const recentHistory = newHistory.slice(-20);
+
+    const historyForAi = recentHistory.map(m => ({
       role: m.role,
       content: { text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text), images: (m.content as any).images || [] }
     }));
@@ -576,7 +606,7 @@ export default function Home() {
                 {messages.map((m, i) => {
                     const { cleanText, suggestions } = parseMessageContent(m.content);
                     return (
-                        <div key={i} className={`flex gap-3 ${m.role==='user'?'justify-end':'justify-start'}`}>
+                        <div key={i} className={`flex gap-3 ${m.role==='user'?'justify-end':'justify-start'} group`}>
                             {m.role!=='user' && <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs shrink-0">🧊</div>}
                             <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100')}`}>
                                 {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-2">{m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}{m.content.fileInfos?.length > 0 && (<div className="flex flex-wrap gap-2 mb-2">{m.content.fileInfos.map((f: any, idx: number) => (<div key={idx} className="flex items-center gap-2 bg-white/20 p-2 rounded-lg text-xs border border-white/10"><FileText size={14} className="text-white" /><span className="font-bold text-white truncate max-w-[150px]">{f.name}</span></div>))}</div>)}<div className="text-sm whitespace-pre-wrap">{m.content.text}</div></div>) : (
@@ -589,7 +619,7 @@ export default function Home() {
                                                 const text = String(children).replace(/\n$/, '');
                                                 const isGenerating = isLoading && i === messages.length - 1; 
 
-                                                // ✅ CSV 表格卡片
+                                                // CSV 表格卡片
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
@@ -597,13 +627,21 @@ export default function Home() {
                                                     }
                                                 }
 
-                                                // ✅ [新增] Word 文档卡片 (带预览)
+                                                // Word 文档卡片
                                                 if (!inline && match?.[1] === 'document') {
                                                     return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handlePreviewDoc(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word</Button></div></div>)
                                                 }
 
+                                                // ✅ [优化] 普通代码块渲染
                                                 if (!inline) {
-                                                    return (<div className="relative mb-4 group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700"><div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700"><span className="text-[10px] font-mono text-slate-500 uppercase">{match?.[1] || 'Code'}</span><CopyButton text={text} /></div><pre className="p-4 bg-slate-50 dark:bg-slate-900 overflow-x-auto text-xs font-mono"><code className={className} {...props}>{children}</code></pre></div>)
+                                                    return (
+                                                        <div className="relative my-4 rounded-xl overflow-hidden border border-gray-700 bg-[#1e1e1e] shadow-lg">
+                                                            <CodeHeader lang={match?.[1] || 'text'} text={text} />
+                                                            <pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed text-[#d4d4d4]">
+                                                                <code className={className} {...props}>{children}</code>
+                                                            </pre>
+                                                        </div>
+                                                    )
                                                 }
                                                 return <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-red-500 font-mono text-xs" {...props}>{children}</code>
                                             },
@@ -615,6 +653,10 @@ export default function Home() {
                                         >
                                             {cleanText}
                                         </ReactMarkdown>
+                                        
+                                        {/* ✅ [新增] 底部工具栏 */}
+                                        <MessageActions content={cleanText} />
+
                                         {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSendSimple(q)} />}
                                     </div>
                                 )}
@@ -631,22 +673,7 @@ export default function Home() {
           
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
           
-          {/* ✅ [新增] Word 文档预览弹窗 */}
-          <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}>
-            <DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900">
-                <div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10">
-                    <h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3>
-                    <Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-8">
-                    <div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200">
-                        <div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">
-                            {previewDocData}
-                        </div>
-                    </div>
-                </div>
-            </DialogContent>
-          </Dialog>
+          <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}><DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900"><div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10"><h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3><Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button></div><div className="flex-1 overflow-y-auto p-8"><div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200"><div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">{previewDocData}</div></div></div></DialogContent></Dialog>
 
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
