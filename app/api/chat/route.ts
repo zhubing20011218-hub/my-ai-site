@@ -48,14 +48,14 @@ export async function POST(req: Request) {
     // 🧠 分支 3：Gemini 文字模型 (含联网 + 猜你想问)
     // ============================================================
     
-    [cite_start]// 🎯 映射你的高权限模型 [cite: 2, 3, 15]
+    // 🎯 映射你的高权限模型 (已清理引用标记)
     let targetModel = 'gemini-2.5-flash'; 
 
     if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
     else if (model === 'gemini-1.5-pro') targetModel = 'gemini-2.5-pro';   
     else if (model === 'gemini-2.0-flash-thinking-exp') targetModel = 'gemini-exp-1206'; 
 
-    // ✅ [修复] 强制生成“猜你想问”的指令
+    // ✅ 强制生成“猜你想问”的指令
     let systemInstruction = `You are Eureka, a helpful AI assistant. 
     IMPORTANT: After your main response, you MUST generate 3 related follow-up questions that the user might want to ask next.
     Format them strictly like this at the very end:
@@ -70,11 +70,11 @@ export async function POST(req: Request) {
     }
     if (persona === 'tiktok_script') systemInstruction += " You are a TikTok viral script expert.";
 
-    // ✅ [修复] 开启 Google Search (联网能力) + 绕过 TS 检查
+    // ✅ 开启 Google Search (联网能力) + 绕过 TS 检查
     const geminiModel = genAI.getGenerativeModel({ 
       model: targetModel, 
       systemInstruction: systemInstruction,
-      tools: [{ googleSearch: {} } as any] // 👈 强制开启搜索工具
+      tools: [{ googleSearch: {} } as any] 
     });
 
     const chat = geminiModel.startChat({
