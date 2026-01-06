@@ -14,12 +14,11 @@ import {
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-// ✅ 引入处理库
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
-import { Document, Packer, Paragraph, TextRun } from "docx";
 // 使用 require 方式引入 file-saver 以避开某些严格的 TS 检查
 const { saveAs } = require('file-saver');
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
@@ -254,6 +253,10 @@ export default function Home() {
   
   const [previewTableData, setPreviewTableData] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  // ✅ [新增] Word 预览状态
+  const [previewDocData, setPreviewDocData] = useState<string | null>(null);
+  const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
+
   const [toastState, setToastState] = useState<{show: boolean, type: 'loading'|'success', msg: string}>({ show: false, type: 'loading', msg: '' });
 
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
@@ -300,7 +303,6 @@ export default function Home() {
     setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000);
   };
 
-  // ✅ 下载 Excel
   const handleDownloadExcel = (csvData: string) => {
     showToast('loading', '正在生成 Excel...');
     setTimeout(() => {
@@ -309,12 +311,12 @@ export default function Home() {
             XLSX.writeFile(wb, `eureka_data_${new Date().getTime()}.xlsx`);
             showToast('success', 'Excel 下载已开始');
         } catch (e) {
-            showToast('loading', '下载失败'); 
+            showToast('loading', '下载失败，请重试'); 
         }
     }, 1500); 
   };
 
-  // ✅ [新增] 下载 Word
+  // ✅ 下载 Word
   const handleDownloadWord = (text: string) => {
     showToast('loading', '正在生成 Word 文档...');
     setTimeout(() => {
@@ -336,6 +338,16 @@ export default function Home() {
             showToast('loading', '下载失败');
         }
     }, 1500);
+  };
+
+  // ✅ [新增] 预览 Word
+  const handlePreviewDoc = (text: string) => {
+    showToast('loading', '正在渲染文档...');
+    setTimeout(() => {
+        setPreviewDocData(text);
+        setIsDocPreviewOpen(true);
+        showToast('success', '渲染完成');
+    }, 800);
   };
 
   const handlePreviewTable = (csvData: string) => {
@@ -445,22 +457,16 @@ export default function Home() {
     const processedImages: string[] = [];
     const fileInfos: {name: string, type: string}[] = []; 
     
-    // ✅ [智能判断 2.0]：区分表格需求和文档需求
+    // 智能判断
     let systemInstruction = "";
-    
-    // 触发表格模式的关键词
     const isTableRequest = /表格|excel|csv|清单|统计/i.test(text);
-    // 触发文档模式的关键词
     const isDocRequest = /word|文档|报告|大纲|下载/i.test(text) && !isTableRequest;
 
     if (isTableRequest) {
-        // 强制 CSV
         systemInstruction = "\n\n(SYSTEM: Output result strictly as a CSV code block for Excel.)";
     } else if (isDocRequest) {
-        // 强制 Document Block
         systemInstruction = "\n\n(SYSTEM: The user wants a downloadable document. Wrap your response in a code block with language 'document'. Do NOT use other formats.)";
     }
-    // 否则：正常聊天，什么都不加
 
     let appendedText = text + systemInstruction;
 
@@ -583,7 +589,7 @@ export default function Home() {
                                                 const text = String(children).replace(/\n$/, '');
                                                 const isGenerating = isLoading && i === messages.length - 1; 
 
-                                                // ✅ [绿色卡片] CSV 表格
+                                                // ✅ CSV 表格卡片
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
@@ -591,9 +597,9 @@ export default function Home() {
                                                     }
                                                 }
 
-                                                // ✅ [新增] 蓝色卡片 Word 文档
+                                                // ✅ [新增] Word 文档卡片 (带预览)
                                                 if (!inline && match?.[1] === 'document') {
-                                                    return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 relative"><div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg text-xs text-slate-600 dark:text-slate-400 max-h-32 overflow-hidden mb-3 font-mono border border-slate-200 dark:border-slate-700">{text.slice(0, 200)}...</div>{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`w-full h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word 文档</Button></div></div>)
+                                                    return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handlePreviewDoc(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word</Button></div></div>)
                                                 }
 
                                                 if (!inline) {
@@ -622,8 +628,26 @@ export default function Home() {
              </div>
           </div>
           <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}><div className="max-w-3xl mx-auto"><ChatInput onSend={handleChatSubmit} disabled={isLoading} /></div></div>
+          
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
-          {/* 其他弹窗省略... */}
+          
+          {/* ✅ [新增] Word 文档预览弹窗 */}
+          <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}>
+            <DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900">
+                <div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10">
+                    <h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3>
+                    <Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-8">
+                    <div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200">
+                        <div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">
+                            {previewDocData}
+                        </div>
+                    </div>
+                </div>
+            </DialogContent>
+          </Dialog>
+
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
           {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
