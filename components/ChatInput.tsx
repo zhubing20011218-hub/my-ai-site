@@ -2,7 +2,8 @@
 
 import { useState, useRef } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText, Video, Image as ImageIcon, Sparkles, Briefcase, Smile, BarChart3 } from "lucide-react";
+// ✅ 引入 Wand2 (魔法棒图标) 和 Loader2 (加载圈)
+import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText, Video, Image as ImageIcon, Sparkles, Briefcase, Smile, BarChart3, Wand2, Loader2 } from "lucide-react";
 
 // ✅ [配置保留] 全平台模型配置
 export const MODEL_OPTIONS = [
@@ -14,7 +15,7 @@ export const MODEL_OPTIONS = [
   { id: "banana-sdxl", name: "Banana SDXL", desc: "极速绘图", icon: ImageIcon, color: "text-yellow-500", type: "image" },
 ];
 
-// ✅ [配置保留] 角色预设
+// ✅ [配置保留] 角色预设 (既然你不删，我们就完整保留)
 export const ROLE_OPTIONS = [
   { id: "general", name: "通用助手", icon: Sparkles, color: "text-slate-600", hint: "有问题尽管问我..." },
   { id: "tiktok_script", name: "爆款脚本", icon: Video, color: "text-pink-500", hint: "输入产品名，生成黄金前3秒脚本..." },
@@ -37,6 +38,8 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  // ✅ [新增] 优化加载状态
+  const [isOptimizing, setIsOptimizing] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -57,6 +60,27 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
+  // ✅ [新增] 调用优化接口
+  const handleOptimize = async () => {
+    if (!input.trim()) return;
+    setIsOptimizing(true);
+    try {
+      const res = await fetch('/api/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: input })
+      });
+      const data = await res.json();
+      if (data.optimizedText) {
+        setInput(data.optimizedText); // 直接替换输入框内容
+      }
+    } catch (e) {
+      console.error("Optimization failed", e);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
   const handleDrop = (e: React.DragEvent) => {
@@ -65,13 +89,11 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
       setFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
     }
   };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = e.target.files;
     if (selectedFiles && selectedFiles.length > 0) setFiles((prev) => [...prev, ...Array.from(selectedFiles)]);
     if (fileInputRef.current) fileInputRef.current.value = ""; 
   };
-
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     const pastedFiles: File[] = [];
@@ -86,7 +108,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         setFiles((prev) => [...prev, ...pastedFiles]);
     }
   };
-
   const removeFile = (index: number) => {
     setFiles(files.filter((_, i) => i !== index));
   };
@@ -101,26 +122,13 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
       )}
 
-      <div 
-        className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"} focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
+      <div className={`relative bg-white border rounded-2xl shadow-sm transition-all duration-200 ${isDragging ? "border-blue-500" : "border-gray-200 hover:border-gray-300"} focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500`}>
         {files.length > 0 && (
           <div className="flex gap-2 p-3 pb-0 overflow-x-auto">
             {files.map((file, i) => (
               <div key={i} className="relative group flex-shrink-0 bg-gray-50 border rounded-lg p-2 w-20 h-20 flex flex-col items-center justify-center overflow-hidden">
-                {/* ✅ [修复] 按钮位置改为正数，防止被切掉 */}
                 <button onClick={() => removeFile(i)} className="absolute top-1 right-1 bg-black/50 hover:bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition shadow-sm z-10"><X size={10} /></button>
-                {file.type.startsWith("image/") ? (
-                    <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" />
-                ) : (
-                    <div className="flex flex-col items-center text-gray-400 w-full pt-1">
-                        <FileText size={24} className="mb-1 text-blue-400" />
-                        <span className="text-[9px] truncate w-full text-center px-1 leading-tight">{file.name}</span>
-                    </div>
-                )}
+                {file.type.startsWith("image/") ? <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover rounded" /> : <div className="flex flex-col items-center text-gray-400 w-full pt-1"><FileText size={24} className="mb-1 text-blue-400" /><span className="text-[9px] truncate w-full text-center px-1 leading-tight">{file.name}</span></div>}
               </div>
             ))}
           </div>
@@ -141,6 +149,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <div className="flex items-center gap-1">
             <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" title="上传文件"><Paperclip size={18} /></button>
 
+            {/* ✅ [保留] 角色选择器 */}
             <div className="relative">
               <button onClick={() => setShowRoleMenu(!showRoleMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-lg transition">
                 <currentRole.icon size={14} className={currentRole.color} />
@@ -161,6 +170,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               )}
             </div>
 
+            {/* ✅ [保留] 模型选择器 */}
             <div className="relative">
               <button onClick={() => setShowModelMenu(!showModelMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition">
                 <currentModel.icon size={14} />
@@ -181,6 +191,20 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
                 </>
               )}
             </div>
+
+            {/* ✅ [新增] 帮我写/指令优化按钮 (在你指定的位置) */}
+            {input.trim().length > 0 && (
+                <button 
+                    onClick={handleOptimize} 
+                    disabled={isOptimizing}
+                    className="flex items-center gap-1 px-2 py-1.5 ml-1 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg text-xs font-bold transition-all animate-in fade-in zoom-in"
+                    title="AI 自动优化指令"
+                >
+                    {isOptimizing ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
+                    <span>帮我写</span>
+                </button>
+            )}
+
           </div>
 
           <button onClick={handleSend} disabled={(!input.trim() && files.length === 0) || disabled} className={`p-2 rounded-xl transition-all duration-200 ${(!input.trim() && files.length === 0) ? "bg-gray-100 text-gray-300 cursor-not-allowed" : "bg-black text-white hover:bg-gray-800 shadow-md active:scale-95"}`}><Send size={18} /></button>
