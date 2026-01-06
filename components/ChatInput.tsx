@@ -6,13 +6,7 @@ import { Button } from "@/components/ui/button"
 export const ALL_MODELS = [
   // --- 文本模型 ---
   { 
-    id: "gemini-exp-1206", // ✅ 默认最强
-    name: "Gemini Thinking", 
-    desc: "最强版 | 深度推理，解决难题", 
-    category: "text"
-  },
-  { 
-    id: "gemini-2.5-pro", 
+    id: "gemini-2.5-pro", // 推荐默认：稳定且强
     name: "Gemini 2.5 Pro", 
     desc: "均衡型 | 强力逻辑，长文分析", 
     category: "text"
@@ -21,6 +15,12 @@ export const ALL_MODELS = [
     id: "gemini-2.5-flash", 
     name: "Gemini 2.5 Flash", 
     desc: "轻量级 | 极速响应，日常助手", 
+    category: "text"
+  },
+  { 
+    id: "gemini-exp-1206", 
+    name: "Gemini Thinking", 
+    desc: "最强版 | 深度推理，解决难题", 
     category: "text"
   },
   // --- 视频模型 ---
@@ -56,13 +56,12 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
   const [files, setFiles] = useState<File[]>([])
   
   const availableModels = ALL_MODELS.filter(m => allowedCategories.includes(m.category));
-  // ✅ 逻辑：如果允许的分类里有Thinking模型，就默认选中它，否则选中第一个
-  const defaultModelID = availableModels.find(m => m.id === "gemini-exp-1206") ? "gemini-exp-1206" : (availableModels[0]?.id || "");
+  const defaultModelID = availableModels.find(m => m.id === "gemini-2.5-pro") ? "gemini-2.5-pro" : (availableModels[0]?.id || "");
   const [selectedModel, setSelectedModel] = useState(defaultModelID);
   
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   
-  // ✨ 帮我写 - 状态管理
+  // 帮我写状态
   const [isOptimizeModalOpen, setIsOptimizeModalOpen] = useState(false)
   const [optimizeInput, setOptimizeInput] = useState("")
   const [optimizedResult, setOptimizedResult] = useState("")
@@ -71,19 +70,23 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const optimizeRef = useRef<HTMLDivElement>(null)
+  // 引用 textarea 以便自动调整高度（可选优化）
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 点击外部关闭模型菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsModelMenuOpen(false);
+      }
+      if (optimizeRef.current && !optimizeRef.current.contains(event.target as Node)) {
+        setIsOptimizeModalOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 类别变化时重置模型
   useEffect(() => {
     const currentExists = availableModels.find(m => m.id === selectedModel);
     if (!currentExists) {
@@ -91,7 +94,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     }
   }, [allowedCategories]);
 
-  // 发送逻辑
   const handleSend = () => {
     if ((!input.trim() && files.length === 0) || disabled) return
     onSend(input, files, selectedModel, "general")
@@ -116,7 +118,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  // ✨ 核心功能：调用后台 API 进行优化
   const handleRunOptimize = async () => {
     if (!optimizeInput.trim()) return;
     setIsOptimizing(true);
@@ -140,18 +141,15 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     }
   };
 
-  // 复制结果
   const handleCopy = () => {
     navigator.clipboard.writeText(optimizedResult);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   }
 
-  // 一键推送：直接填入主输入框并关闭弹窗
   const handlePush = () => {
-    setInput(optimizedResult); // 填入
-    setIsOptimizeModalOpen(false); // 关闭弹窗
-    // 重置状态方便下次使用
+    setInput(optimizedResult); 
+    setIsOptimizeModalOpen(false); 
     setOptimizeInput("");
     setOptimizedResult("");
   }
@@ -160,8 +158,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
 
   return (
     <div className="relative">
-      
-      {/* ✨ 全屏居中弹窗：帮我写 */}
+      {/* 帮我写弹窗 */}
       {isOptimizeModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 m-4 scale-100 animate-in zoom-in-95 duration-200">
@@ -181,7 +178,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
                         <textarea 
                             value={optimizeInput}
                             onChange={(e) => setOptimizeInput(e.target.value)}
-                            placeholder="例如：帮我写一段贪吃蛇游戏的 Python 代码..."
+                            placeholder="例如：帮我写个请假条..."
                             className="w-full h-24 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none text-sm"
                         />
                     </div>
@@ -195,7 +192,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
                         {isOptimizing ? "AI 正在思考重写..." : "开始优化"}
                     </Button>
 
-                    {/* 结果显示区 */}
                     {optimizedResult && (
                         <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 animate-in slide-in-from-top-2">
                             <label className="text-xs font-bold text-slate-500 mb-1.5 block">优化结果</label>
@@ -217,7 +213,7 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
         </div>
       )}
 
-      {/* 📎 文件预览区域 */}
+      {/* 文件预览区 */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto px-2">
           {files.map((file, i) => (
@@ -234,32 +230,32 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
         </div>
       )}
 
-      {/* ⌨️ 输入框主体 */}
+      {/* ⚠️ 核心修复：输入框样式 */}
       <div className={`relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[24px] shadow-sm transition-all focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
         
+        {/* 移除 flex，设置 w-full block，确保有高度 */}
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入消息..."
           disabled={disabled}
           rows={1}
-          className="flex min-h-[50px] max-h-[200px] w-full rounded-md bg-transparent px-4 py-3.5 pr-32 text-sm placeholder:text-slate-400 focus:outline-none dark:text-slate-200 resize-none"
+          className="block w-full min-h-[52px] max-h-[200px] rounded-t-[24px] bg-transparent px-4 py-4 pr-4 text-sm placeholder:text-slate-400 focus:outline-none dark:text-slate-200 resize-none"
         />
 
         {/* 底部工具栏 */}
-        <div className="flex justify-between items-center px-2 pb-2">
+        <div className="flex justify-between items-center px-3 pb-3 pt-1">
             
-            {/* 左侧功能区 */}
+            {/* 左侧功能区：🔗 -> 🤖 -> ✨ */}
             <div className="flex items-center gap-2 relative">
                 
-                {/* 1. 🔗 附件按钮 */}
                 <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-500 rounded-full" onClick={() => fileInputRef.current?.click()}>
                     <Paperclip size={18} />
                 </Button>
 
-                {/* 2. 🤖 模型选择 */}
                 <div className="relative" ref={menuRef}>
                     <button 
                       onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
@@ -270,7 +266,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
                        <ChevronDown size={12} className={`opacity-50 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}/>
                     </button>
 
-                    {/* 模型下拉菜单 */}
                     {isModelMenuOpen && (
                       <div className="absolute bottom-full left-0 mb-2 w-64 p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200">
                           <div className="space-y-1">
@@ -286,18 +281,18 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
                     )}
                 </div>
 
-                {/* 3. ✨ 帮我写 (常亮 + 触发弹窗) */}
-                <Button 
-                    variant="ghost" 
-                    onClick={() => setIsOptimizeModalOpen(true)}
-                    className="h-8 px-3 rounded-full flex items-center gap-1.5 transition-colors text-xs font-bold text-slate-500 hover:text-purple-600 hover:bg-purple-50 dark:text-slate-400 dark:hover:bg-purple-900/20"
-                >
-                    <Sparkles size={14} className="text-purple-500"/>
-                    <span>帮我写</span>
-                </Button>
+                <div className="relative" ref={optimizeRef}>
+                    <Button 
+                        variant="ghost" 
+                        onClick={() => setIsOptimizeModalOpen(true)}
+                        className="h-8 px-3 rounded-full flex items-center gap-1.5 transition-colors text-xs font-bold text-slate-500 hover:text-purple-600 hover:bg-purple-50 dark:text-slate-400 dark:hover:bg-purple-900/20"
+                    >
+                        <Sparkles size={14} className="text-purple-500"/>
+                        <span>帮我写</span>
+                    </Button>
+                </div>
             </div>
 
-            {/* 右侧：发送按钮 */}
             <Button 
                 onClick={handleSend} 
                 disabled={disabled || (!input.trim() && files.length === 0)}
