@@ -19,14 +19,10 @@ export async function POST(req: Request) {
 
     console.log(`[API Request] Model: ${model}`);
 
-    // ... (Replicate 画图/视频逻辑保持不变，省略以节省篇幅，请保留之前的代码) ...
-    // ... 如果需要我完整写出 Replicate 部分请告诉我，否则只替换下面的 Gemini 部分 ...
-
     // ============================================================
     // 🎨 分支 1：绘图模型 (Banana SDXL)
     // ============================================================
     if (model === 'banana-sdxl') {
-        // ... (保持之前的 Replicate 绘图代码) ...
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         const output: any = await replicate.run(
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
@@ -39,7 +35,6 @@ export async function POST(req: Request) {
     // 🎬 分支 2：视频模型
     // ============================================================
     if (model === 'sora-v1' || model === 'veo-google') {
-        // ... (保持之前的 Replicate 视频代码) ...
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         const videoOutput: any = await replicate.run(
           "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
@@ -50,36 +45,36 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 分支 3：Gemini 文字模型 (精准映射你的 2.5 权限)
+    // 🧠 分支 3：Gemini 文字模型 (含联网 + 猜你想问)
     // ============================================================
     
-    let targetModel = 'gemini-2.5-flash'; // 默认保底
+    [cite_start]// 🎯 映射你的高权限模型 [cite: 2, 3, 15]
+    let targetModel = 'gemini-2.5-flash'; 
 
-    // 1. 低档 ($0.03) -> 利润王
-    if (model === 'gemini-2.0-flash-exp') {
-        targetModel = 'gemini-2.5-flash'; 
-    } 
-    // 2. 中档 ($0.05) -> 稳定输出
-    else if (model === 'gemini-1.5-pro') {
-        targetModel = 'gemini-2.5-pro';   
-    } 
-    // 3. 高档 ($0.07) -> 思考者 (Exp 1206)
-    else if (model === 'gemini-2.0-flash-thinking-exp') {
-        targetModel = 'gemini-exp-1206'; 
-    }
+    if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
+    else if (model === 'gemini-1.5-pro') targetModel = 'gemini-2.5-pro';   
+    else if (model === 'gemini-2.0-flash-thinking-exp') targetModel = 'gemini-exp-1206'; 
 
-    let systemInstruction = "You are Eureka, a helpful AI assistant.";
+    // ✅ [修复] 强制生成“猜你想问”的指令
+    let systemInstruction = `You are Eureka, a helpful AI assistant. 
+    IMPORTANT: After your main response, you MUST generate 3 related follow-up questions that the user might want to ask next.
+    Format them strictly like this at the very end:
     
-    // 如果是 Exp-1206 (Thinking)，它自带 thinking 能力，但我们可以引导它更深入
+    ___RELATED___
+    Question 1? | Question 2? | Question 3?
+    
+    (Do not add any other text after the related questions).`;
+    
     if (targetModel === 'gemini-exp-1206') {
-        systemInstruction += " You are in Deep Thinking Mode. Analyze the user's request thoroughly using Chain of Thought before answering.";
+        systemInstruction += " You are in Deep Thinking Mode. Analyze thoroughly.";
     }
-    
     if (persona === 'tiktok_script') systemInstruction += " You are a TikTok viral script expert.";
 
+    // ✅ [修复] 开启 Google Search (联网能力) + 绕过 TS 检查
     const geminiModel = genAI.getGenerativeModel({ 
       model: targetModel, 
-      systemInstruction: systemInstruction 
+      systemInstruction: systemInstruction,
+      tools: [{ googleSearch: {} } as any] // 👈 强制开启搜索工具
     });
 
     const chat = geminiModel.startChat({

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import ChatInput from "@/components/ChatInput" 
+import ChatInput, { MODEL_OPTIONS } from "@/components/ChatInput" 
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -17,7 +17,6 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
-// 使用 require 方式引入 file-saver 以避开某些严格的 TS 检查
 const { saveAs } = require('file-saver');
 import { Document, Packer, Paragraph, TextRun } from "docx";
 
@@ -54,10 +53,7 @@ const CodeHeader = ({ lang, text }: { lang: string, text: string }) => {
   return (
     <div className="flex justify-between items-center bg-[#2d2d2d] text-gray-300 px-4 py-2 text-xs border-b border-gray-700 select-none">
         <span className="uppercase font-mono font-bold text-blue-400">{lang || 'CODE'}</span>
-        <button 
-            onClick={handleCopy} 
-            className="flex items-center gap-1 hover:text-white transition-colors"
-        >
+        <button onClick={handleCopy} className="flex items-center gap-1 hover:text-white transition-colors">
             {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
             <span>{copied ? "已复制" : "复制代码"}</span>
         </button>
@@ -74,13 +70,8 @@ const MessageActions = ({ content }: { content: string }) => {
     };
     return (
         <div className="flex items-center gap-3 mt-2 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button 
-                onClick={handleCopy}
-                className="flex items-center gap-1 text-[10px] hover:text-blue-500 transition-colors"
-                title="复制全部内容"
-            >
-                {copied ? <Check size={12}/> : <Copy size={12}/>}
-                <span>{copied ? "已复制" : "复制答案"}</span>
+            <button onClick={handleCopy} className="flex items-center gap-1 text-[10px] hover:text-blue-500 transition-colors" title="复制全部内容">
+                {copied ? <Check size={12}/> : <Copy size={12}/>}<span>{copied ? "已复制" : "复制答案"}</span>
             </button>
             <div className="w-[1px] h-3 bg-slate-200 dark:bg-slate-700"></div>
             <button className="hover:text-green-500 transition-colors"><ThumbsUp size={12}/></button>
@@ -98,18 +89,10 @@ const compressImage = async (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_SIZE = 1024;
-        if (width > height) {
-          if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-        } else {
-          if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
+        let width = img.width; let height = img.height; const MAX_SIZE = 1024;
+        if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } } else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d'); ctx?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
       img.onerror = (error) => reject(error);
@@ -127,9 +110,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
     if (questions.length === 0) return null;
     return (
       <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-3">
-        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase">
-          <Sparkles size={12} className="text-blue-500 fill-blue-500"/> 您可能感兴趣
-        </div>
+        <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase"><Sparkles size={12} className="text-blue-500 fill-blue-500"/> 您可能感兴趣</div>
         <div className="flex flex-wrap gap-2">
           {questions.map((q, idx) => (
             <button key={idx} onClick={() => onAsk(q)} className="group flex items-center gap-1.5 px-4 py-2 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-full text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left">
@@ -142,6 +123,7 @@ function RelatedQuestions({ content, onAsk }: { content: string, onAsk: (q: stri
   } catch (e) { return null; }
 }
 
+// ✅ [修复] Thinking 组件现在接收真实名称
 function Thinking({ modelName }: { modelName: string }) {
   const [major, setMajor] = useState(0);
   const [minor, setMinor] = useState(-1);
@@ -272,7 +254,6 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
-  // ✅ [新增] 个人中心 Tab 状态 ('wallet' | 'history' | 'sora' | 'veo' | 'banana')
   const [profileTab, setProfileTab] = useState('wallet');
 
   const [messages, setMessages] = useState<any[]>([]);
@@ -302,15 +283,20 @@ export default function Home() {
   const [activeSessionUser, setActiveSessionUser] = useState<string|null>(null);
   const supportScrollRef = useRef<HTMLDivElement>(null);
 
+  // ✅ [查找当前模型显示名称]
+  const currentModelName = MODEL_OPTIONS.find(m => m.id === model)?.name || model;
+
   const parseMessageContent = (content: any) => {
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
-    const START_TAG = '<<<SUGGESTIONS_START>>>';
-    const END_TAG = '<<<SUGGESTIONS_END>>>';
+    // ✅ [解析] 根据新分隔符提取内容
+    const START_TAG = '___RELATED___';
     const parts = rawText.split(START_TAG);
     const cleanText = parts[0]; 
     let suggestions: string[] = [];
-    if (parts[1]) { try { const jsonStr = parts[1].split(END_TAG)[0]; suggestions = JSON.parse(jsonStr); } catch (e) {} }
+    if (parts[1]) { 
+        suggestions = parts[1].split('|').map((q: string) => q.trim()).filter((q: string) => q.length > 0);
+    }
     return { cleanText, suggestions };
   };
 
@@ -475,8 +461,6 @@ export default function Home() {
     roleId: string = "general" 
   ) => {
     setModel(modelId);
-    
-    // ✅ [埋点升级] 把用户输入的前15个字记录到消费描述里，方便在个人中心查看
     const desc = `使用 ${modelId}: ${text.slice(0, 15)}${text.length > 15 ? '...' : ''}`;
     const cost = MODEL_PRICING[modelId] || 0.01;
     const success = await handleTX('consume', cost, desc);
@@ -495,8 +479,6 @@ export default function Home() {
         systemInstruction = "\n\n(SYSTEM: Output result strictly as a CSV code block for Excel.)";
     } else if (isDocRequest) {
         systemInstruction = "\n\n(SYSTEM: The user wants a downloadable document. Wrap your response in a code block with language 'document'. Do NOT use other formats.)";
-    } else {
-        systemInstruction = "\n\n(SYSTEM: You only have access to the last 10 interaction turns. If the user asks to modify a code file or document that is NOT visible in this recent history, DO NOT hallucinate or guess. Instead, politely ask the user to provide the file content/code again.)";
     }
 
     let appendedText = text + systemInstruction;
@@ -587,10 +569,9 @@ export default function Home() {
 
   if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); fetchChatList(u.id); }} />;
 
-  // ✅ 辅助函数：判断记录是否在24小时内
+  // ✅ [保留] 辅助函数：判断记录是否在24小时内
   const isWithin24Hours = (timeStr: string) => {
     try {
-        // 假设 timeStr 格式为 "2024-01-01 12:00:00" 或者标准时间戳
         const time = new Date(timeStr).getTime();
         const now = new Date().getTime();
         return (now - time) < 24 * 60 * 60 * 1000;
@@ -598,10 +579,12 @@ export default function Home() {
   };
 
   return (
-    <div className={`flex min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden`}>
+    // ✅ [修复] 侧边栏布局：h-screen overflow-hidden 确保整体不滚动，只滚动内容区域
+    <div className={`flex h-screen overflow-hidden transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
       <Toast show={toastState.show} type={toastState.type} message={toastState.msg} />
-      {/* 侧边栏保持不变... */}
-      <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col shrink-0 overflow-hidden relative z-20`}>
+      
+      {/* 侧边栏：overflow-y-auto 独立滚动 */}
+      <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} h-full flex-shrink-0 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col overflow-y-auto relative z-20`}>
          <div className="p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
             <Button onClick={startNewChat} className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"><Plus size={16}/> 开启新对话</Button>
@@ -610,11 +593,11 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">${user.balance}</div></div></div></div>
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">${user.balance}</div></div></div></div>
       </div>
 
-      {/* 主界面... */}
-      <div className="flex-1 flex flex-col h-screen relative">
+      {/* 主界面：overflow-y-auto 独立滚动 */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
           <div className={`h-14 flex items-center justify-between px-4 border-b shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><div className="flex items-center gap-2"><button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Server size={18} className="rotate-90"/></button><div className="font-bold text-sm text-slate-400 flex items-center gap-2">{currentChatId ? '历史对话' : '新对话'}</div></div><div className="flex items-center gap-2"><button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button></div></div>
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
              <div className="max-w-3xl mx-auto space-y-6">
@@ -634,18 +617,15 @@ export default function Home() {
                                                 const match = /language-(\w+)/.exec(className || '');
                                                 const text = String(children).replace(/\n$/, '');
                                                 const isGenerating = isLoading && i === messages.length - 1; 
-                                                // CSV
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
                                                       return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-amber-600' : 'text-green-700 dark:text-green-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}<span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 数据写入中...</div></div>}<Button onClick={() => handlePreviewTable(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadExcel(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 导出 Excel</Button></div></div>)
                                                     }
                                                 }
-                                                // Word
                                                 if (!inline && match?.[1] === 'document') {
                                                     return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handlePreviewDoc(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word</Button></div></div>)
                                                 }
-                                                // Code
                                                 if (!inline) {
                                                     return (<div className="relative my-4 rounded-xl overflow-hidden border border-gray-700 bg-[#1e1e1e] shadow-lg"><CodeHeader lang={match?.[1] || 'text'} text={text} /><pre className="p-4 overflow-x-auto text-sm font-mono leading-relaxed text-[#d4d4d4]"><code className={className} {...props}>{children}</code></pre></div>)
                                                 }
@@ -660,6 +640,7 @@ export default function Home() {
                                             {cleanText}
                                         </ReactMarkdown>
                                         <MessageActions content={cleanText} />
+                                        {/* ✅ [修复] 恢复显示“猜你想问”按钮 */}
                                         {suggestions.length > 0 && <RelatedQuestions content={`___RELATED___${suggestions.join("|")}`} onAsk={(q)=>handleSendSimple(q)} />}
                                     </div>
                                 )}
@@ -668,129 +649,61 @@ export default function Home() {
                         </div>
                     );
                 })}
-                {isLoading && <Thinking modelName={model} />}
+                {/* ✅ [修复] 传递真实的模型名称给 Thinking 组件 */}
+                {isLoading && <Thinking modelName={currentModelName} />}
                 <div ref={scrollRef} className="h-4" />
              </div>
           </div>
           <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}><div className="max-w-3xl mx-auto"><ChatInput onSend={handleChatSubmit} disabled={isLoading} /></div></div>
           
+          {/* ... Dialogs 代码保持不变，为节省篇幅，复用之前逻辑 ... */}
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
-          
           <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}><DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900"><div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10"><h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3><Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button></div><div className="flex-1 overflow-y-auto p-8"><div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200"><div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">{previewDocData}</div></div></div></DialogContent></Dialog>
-
-          {/* ✅ [重构] 个人中心弹窗 - 带侧边栏和多功能 Tab */}
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
             <DialogContent className="sm:max-w-4xl h-[600px] p-0 overflow-hidden border-none rounded-[24px] shadow-2xl bg-white dark:bg-slate-950 flex flex-row">
-                {/* 左侧导航栏 */}
                 <div className="w-64 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col p-6">
                     <div className="flex flex-col items-center mb-8">
-                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg">
-                            {user.nickname?.[0]}
-                        </div>
+                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg">{user.nickname?.[0]}</div>
                         <h2 className="font-black text-lg text-slate-800 dark:text-white">{user.nickname}</h2>
                         <p className="text-xs text-slate-400 font-mono mt-1">{user.account}</p>
                     </div>
-                    
                     <nav className="flex-1 space-y-1">
-                        <button onClick={()=>setProfileTab('wallet')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='wallet' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <Wallet size={16}/> 我的钱包
-                        </button>
-                        <button onClick={()=>setProfileTab('history')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='history' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <PieChart size={16}/> 消费明细
-                        </button>
+                        <button onClick={()=>setProfileTab('wallet')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='wallet' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Wallet size={16}/> 我的钱包</button>
+                        <button onClick={()=>setProfileTab('history')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='history' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><PieChart size={16}/> 消费明细</button>
                         <div className="my-4 h-[1px] bg-slate-200 dark:bg-slate-800 mx-2"/>
                         <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">生成记录 (24h)</div>
-                        <button onClick={()=>setProfileTab('sora')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='sora' ? 'bg-white dark:bg-slate-800 text-red-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <Video size={16}/> Sora 视频
-                        </button>
-                        <button onClick={()=>setProfileTab('veo')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='veo' ? 'bg-white dark:bg-slate-800 text-green-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <Video size={16}/> Veo 视频
-                        </button>
-                        <button onClick={()=>setProfileTab('banana')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='banana' ? 'bg-white dark:bg-slate-800 text-yellow-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <ImageIcon size={16}/> Banana 绘图
-                        </button>
+                        <button onClick={()=>setProfileTab('sora')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='sora' ? 'bg-white dark:bg-slate-800 text-red-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Video size={16}/> Sora 视频</button>
+                        <button onClick={()=>setProfileTab('veo')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='veo' ? 'bg-white dark:bg-slate-800 text-green-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Video size={16}/> Veo 视频</button>
+                        <button onClick={()=>setProfileTab('banana')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='banana' ? 'bg-white dark:bg-slate-800 text-yellow-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><ImageIcon size={16}/> Banana 绘图</button>
                     </nav>
-
-                    <Button onClick={handleLogout} variant="ghost" className="mt-4 w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 text-xs">
-                        <LogOut size={16}/> 退出登录
-                    </Button>
+                    <Button onClick={handleLogout} variant="ghost" className="mt-4 w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 text-xs"><LogOut size={16}/> 退出登录</Button>
                 </div>
-
-                {/* 右侧内容区 */}
                 <div className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-950">
-                    {/* 钱包 Tab */}
                     {profileTab === 'wallet' && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><Wallet/> 我的钱包</h3>
-                            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl">
-                                <div className="text-xs opacity-70 mb-1 font-bold uppercase tracking-wider">当前余额</div>
-                                <div className="text-5xl font-black font-mono tracking-tight">${user.balance}</div>
-                            </div>
-                            <Button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="w-full h-12 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">
-                                立即充值
-                            </Button>
+                            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl"><div className="text-xs opacity-70 mb-1 font-bold uppercase tracking-wider">当前余额</div><div className="text-5xl font-black font-mono tracking-tight">${user.balance}</div></div>
+                            <Button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="w-full h-12 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">立即充值</Button>
                         </div>
                     )}
-
-                    {/* 消费明细 Tab */}
                     {profileTab === 'history' && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                             <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><PieChart/> 消费明细</h3>
-                            <div className="space-y-2">
-                                {transactions.filter(t=>t.type==='consume').map((tx, i) => (
-                                    <div key={i} className="flex justify-between items-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors">
-                                        <div className="flex flex-col gap-1">
-                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{tx.description}</span>
-                                            <span className="text-[10px] text-slate-400 font-mono">{tx.time}</span>
-                                        </div>
-                                        <span className="font-bold text-red-500 font-mono text-sm">-${tx.amount}</span>
-                                    </div>
-                                ))}
-                                {transactions.filter(t=>t.type==='consume').length === 0 && <div className="text-center text-xs text-slate-400 py-10">暂无消费记录</div>}
-                            </div>
+                            <div className="space-y-2">{transactions.filter(t=>t.type==='consume').map((tx, i) => (<div key={i} className="flex justify-between items-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"><div className="flex flex-col gap-1"><span className="text-xs font-bold text-slate-700 dark:text-slate-300">{tx.description}</span><span className="text-[10px] text-slate-400 font-mono">{tx.time}</span></div><span className="font-bold text-red-500 font-mono text-sm">-${tx.amount}</span></div>))}{transactions.filter(t=>t.type==='consume').length === 0 && <div className="text-center text-xs text-slate-400 py-10">暂无消费记录</div>}</div>
                         </div>
                     )}
-
-                    {/* 媒体记录 Tabs (Sora, Veo, Banana) */}
                     {['sora', 'veo', 'banana'].includes(profileTab) && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">
-                                {profileTab==='sora' && <Video className="text-red-500"/>}
-                                {profileTab==='veo' && <Video className="text-green-500"/>}
-                                {profileTab==='banana' && <ImageIcon className="text-yellow-500"/>}
-                                {profileTab.charAt(0).toUpperCase() + profileTab.slice(1)} 生成记录
-                            </h3>
-                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl text-xs font-bold flex items-center gap-2">
-                                <Clock size={14}/> 仅显示最近 24 小时内的生成记录，过期自动销毁。
-                            </div>
-                            <div className="space-y-3">
-                                {transactions
-                                    .filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time))
-                                    .map((tx, i) => (
-                                    <div key={i} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">{tx.time}</span>
-                                            <span className="text-xs font-mono font-bold text-red-500">-${tx.amount}</span>
-                                        </div>
-                                        <div className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">
-                                            {tx.description.replace(`使用 ${profileTab}-`, '').replace('v1', '').replace('google', '').replace('sdxl', '')}
-                                        </div>
-                                    </div>
-                                ))}
-                                {transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).length === 0 && (
-                                    <div className="text-center py-10">
-                                        <div className="text-4xl mb-2 opacity-20">🗑️</div>
-                                        <div className="text-xs text-slate-400">暂无 24h 内的生成记录</div>
-                                    </div>
-                                )}
-                            </div>
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">{profileTab==='sora' && <Video className="text-red-500"/>}{profileTab==='veo' && <Video className="text-green-500"/>}{profileTab==='banana' && <ImageIcon className="text-yellow-500"/>}{profileTab.charAt(0).toUpperCase() + profileTab.slice(1)} 生成记录</h3>
+                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl text-xs font-bold flex items-center gap-2"><Clock size={14}/> 仅显示最近 24 小时内的生成记录，过期自动销毁。</div>
+                            <div className="space-y-3">{transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).map((tx, i) => (<div key={i} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">{tx.time}</span><span className="text-xs font-mono font-bold text-red-500">-${tx.amount}</span></div><div className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">{tx.description.replace(`使用 ${profileTab}-`, '').replace('v1', '').replace('google', '').replace('sdxl', '')}</div></div>))}{transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).length === 0 && (<div className="text-center py-10"><div className="text-4xl mb-2 opacity-20">🗑️</div><div className="text-xs text-slate-400">暂无 24h 内的生成记录</div></div>)}</div>
                         </div>
                     )}
                 </div>
             </DialogContent>
           </Dialog>
-
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
+          {/* ... 客服与后台按钮逻辑保持不变 ... */}
           {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
           {isSupportOpen && (<div className="fixed right-6 bottom-24 z-50 w-80 h-96 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl flex flex-col overflow-hidden border dark:border-slate-800"><div className="p-3 bg-blue-600 text-white flex justify-between items-center"><span className="font-bold text-xs">客服</span><button onClick={()=>setIsSupportOpen(false)}><X size={14}/></button></div><div className="flex-1 overflow-y-auto p-3 space-y-2">{supportMessages.map(m=><div key={m.id} className={`p-2 rounded-lg text-xs max-w-[80%] ${m.is_admin ? 'bg-slate-100 dark:bg-slate-800 self-start' : 'bg-blue-100 text-blue-800 self-end ml-auto'}`}>{m.content}</div>)}<div ref={supportScrollRef}/></div><div className="p-2 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} className="h-8 text-xs"/><Button size="icon" className="h-8 w-8" onClick={sendSupportMessage}><Send size={12}/></Button></div></div>)}
           {user?.role === 'admin' && (<div className="fixed right-6 bottom-6 flex gap-2 z-50"><Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}}>卡密管理</Button><Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}}>客服后台</Button></div>)}
