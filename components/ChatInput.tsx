@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react"
-import { Send, Paperclip, X, Image as ImageIcon, FileText, ChevronDown } from "lucide-react"
+import { Send, Paperclip, X, Image as ImageIcon, FileText, ChevronDown, Sparkles, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-// 📦 所有的模型配置数据 (全局导出)
+// 📦 所有的模型配置数据
 export const ALL_MODELS = [
   // --- 文本模型 (首页) ---
   { 
@@ -55,17 +55,14 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
   const [input, setInput] = useState("")
   const [files, setFiles] = useState<File[]>([])
   
-  // 过滤可用模型
   const availableModels = ALL_MODELS.filter(m => allowedCategories.includes(m.category));
-  // 默认选中第一个
   const [selectedModel, setSelectedModel] = useState(availableModels[0]?.id || "gemini-2.5-flash")
-  // 控制模型菜单显示
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  const [isOptimizing, setIsOptimizing] = useState(false) // ✨ 恢复帮我写状态
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // 点击外部关闭菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -76,7 +73,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // 当允许的分类变化时，重置选中项
   useEffect(() => {
     const currentExists = availableModels.find(m => m.id === selectedModel);
     if (!currentExists) {
@@ -108,6 +104,28 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
+  // ✨ 恢复“帮我写”功能
+  const handleOptimize = async () => {
+    if (!input.trim()) return;
+    setIsOptimizing(true);
+    try {
+      // 假设你有一个 /api/optimize 接口，如果没有，这里只是演示效果
+      const res = await fetch('/api/optimize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: input })
+      });
+      const data = await res.json();
+      if (data.optimized) {
+        setInput(data.optimized);
+      }
+    } catch (e) {
+      console.error("优化失败，可能是接口未配置", e);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
   const currentModelObj = ALL_MODELS.find(m => m.id === selectedModel) || availableModels[0];
 
   return (
@@ -132,7 +150,6 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
       {/* ⌨️ 输入框主体 */}
       <div className={`relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[24px] shadow-sm transition-all focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
         
-        {/* ✅ 使用原生 textarea 代替 Textarea 组件，修复报错 */}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -145,38 +162,55 @@ export default function ChatInput({ onSend, disabled, allowedCategories = ['text
 
         {/* 底部工具栏 */}
         <div className="flex justify-between items-center px-2 pb-2">
-            <div className="flex items-center gap-1 relative" ref={menuRef}>
-                {/* ✅ 使用原生 div + absolute 实现下拉菜单，修复 Popover 报错 */}
-                <button 
-                  onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-xs font-bold text-slate-600 dark:text-slate-300"
-                >
-                   <span className={`w-2 h-2 rounded-full ${currentModelObj?.id.includes('exp') ? 'bg-indigo-500' : 'bg-blue-500'}`}></span>
-                   {currentModelObj?.name}
-                   <ChevronDown size={12} className={`opacity-50 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}/>
-                </button>
-
-                {/* 下拉菜单内容 */}
-                {isModelMenuOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-64 p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200">
-                      <div className="space-y-1">
-                          <div className="px-2 py-1 text-[10px] uppercase font-black text-slate-400 tracking-wider">选择模型</div>
-                          {availableModels.map(m => (
-                              <button key={m.id} onClick={() => { setSelectedModel(m.id); setIsModelMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex flex-col gap-0.5 ${selectedModel === m.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'}`}>
-                                  <span>{m.name}</span>
-                                  <span className="text-[10px] font-normal opacity-60">{m.desc}</span>
-                              </button>
-                          ))}
-                      </div>
-                  </div>
-                )}
-
+            {/* 左侧功能区：📎 -> 🤖 -> ✨ */}
+            <div className="flex items-center gap-2" ref={menuRef}>
+                
+                {/* 1. 🔗 附件按钮 (最左边) */}
                 <input type="file" multiple ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-500 rounded-full" onClick={() => fileInputRef.current?.click()}>
-                    <Paperclip size={16} />
+                    <Paperclip size={18} />
+                </Button>
+
+                {/* 2. 🤖 模型选择 (中间) */}
+                <div className="relative">
+                    <button 
+                      onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-xs font-bold text-slate-600 dark:text-slate-300"
+                    >
+                       <span className={`w-2 h-2 rounded-full ${currentModelObj?.id.includes('exp') ? 'bg-indigo-500' : 'bg-blue-500'}`}></span>
+                       {currentModelObj?.name}
+                       <ChevronDown size={12} className={`opacity-50 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`}/>
+                    </button>
+
+                    {/* 下拉菜单 */}
+                    {isModelMenuOpen && (
+                      <div className="absolute bottom-full left-0 mb-2 w-64 p-2 rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-50 animate-in fade-in zoom-in-95 duration-200">
+                          <div className="space-y-1">
+                              <div className="px-2 py-1 text-[10px] uppercase font-black text-slate-400 tracking-wider">选择模型</div>
+                              {availableModels.map(m => (
+                                  <button key={m.id} onClick={() => { setSelectedModel(m.id); setIsModelMenuOpen(false); }} className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex flex-col gap-0.5 ${selectedModel === m.id ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' : 'hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'}`}>
+                                      <span>{m.name}</span>
+                                      <span className="text-[10px] font-normal opacity-60">{m.desc}</span>
+                                  </button>
+                              ))}
+                          </div>
+                      </div>
+                    )}
+                </div>
+
+                {/* 3. ✨ 帮我写 (最右边) */}
+                <Button 
+                    variant="ghost" 
+                    onClick={handleOptimize}
+                    disabled={isOptimizing || !input.trim()}
+                    className="h-8 px-3 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-full flex items-center gap-1.5 transition-colors"
+                >
+                    {isOptimizing ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />}
+                    <span className="text-xs font-bold">帮我写</span>
                 </Button>
             </div>
 
+            {/* 右侧：发送按钮 */}
             <Button 
                 onClick={handleSend} 
                 disabled={disabled || (!input.trim() && files.length === 0)}
