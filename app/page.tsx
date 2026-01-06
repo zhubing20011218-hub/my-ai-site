@@ -14,10 +14,12 @@ import {
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+// ✅ 引入处理库
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
-import { Document, Packer, Paragraph, TextRun } from "docx"; // ✅ [新增] Word 支持
-import { saveAs } from "file-saver"; // ✅ [新增] 下载支持
+import { Document, Packer, Paragraph, TextRun } from "docx";
+// 使用 require 方式引入 file-saver 以避开某些严格的 TS 检查
+const { saveAs } = require('file-saver');
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
