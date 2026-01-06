@@ -10,12 +10,14 @@ import {
   History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
-  FileSpreadsheet, Download, Maximize2, Lock as LockIcon 
+  FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType 
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
+import { Document, Packer, Paragraph, TextRun } from "docx"; // ✅ [新增] Word 支持
+import { saveAs } from "file-saver"; // ✅ [新增] 下载支持
 
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 
@@ -296,25 +298,50 @@ export default function Home() {
     setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000);
   };
 
+  // ✅ 下载 Excel
   const handleDownloadExcel = (csvData: string) => {
-    showToast('loading', '正在生成表格...');
+    showToast('loading', '正在生成 Excel...');
     setTimeout(() => {
         try {
             const wb = XLSX.read(csvData, { type: 'string' });
             XLSX.writeFile(wb, `eureka_data_${new Date().getTime()}.xlsx`);
-            showToast('success', '下载已开始');
+            showToast('success', 'Excel 下载已开始');
         } catch (e) {
-            showToast('loading', '下载失败，请重试'); 
+            showToast('loading', '下载失败'); 
         }
     }, 1500); 
   };
 
+  // ✅ [新增] 下载 Word
+  const handleDownloadWord = (text: string) => {
+    showToast('loading', '正在生成 Word 文档...');
+    setTimeout(() => {
+        try {
+            const doc = new Document({
+                sections: [{
+                    properties: {},
+                    children: text.split('\n').map(line => new Paragraph({
+                        children: [new TextRun(line)],
+                        spacing: { after: 200 }
+                    })),
+                }],
+            });
+            Packer.toBlob(doc).then(blob => {
+                saveAs(blob, `eureka_doc_${new Date().getTime()}.docx`);
+                showToast('success', 'Word 下载已开始');
+            });
+        } catch (e) {
+            showToast('loading', '下载失败');
+        }
+    }, 1500);
+  };
+
   const handlePreviewTable = (csvData: string) => {
-    showToast('loading', '正在生成表格...');
+    showToast('loading', '正在加载预览...');
     setTimeout(() => {
         setPreviewTableData(csvData);
         setIsPreviewOpen(true);
-        showToast('success', '表格生成完毕');
+        showToast('success', '加载完毕');
     }, 1000);
   };
 
@@ -407,7 +434,6 @@ export default function Home() {
     roleId: string = "general" 
   ) => {
     setModel(modelId);
-    
     const cost = MODEL_PRICING[modelId] || 0.01;
     const success = await handleTX('consume', cost, `使用 ${modelId}`);
     if (!success) return; 
@@ -417,31 +443,35 @@ export default function Home() {
     const processedImages: string[] = [];
     const fileInfos: {name: string, type: string}[] = []; 
     
-    // ✅ [智能判断] 只有当用户上传了文件，或者明确提到“表格/导出/数据”等关键词时，才强制输出 CSV
+    // ✅ [智能判断 2.0]：区分表格需求和文档需求
     let systemInstruction = "";
-    const isDataRequest = attachments.length > 0 || /表格|excel|csv|数据|导出|清单|整理/i.test(text);
+    
+    // 触发表格模式的关键词
+    const isTableRequest = /表格|excel|csv|清单|统计/i.test(text);
+    // 触发文档模式的关键词
+    const isDocRequest = /word|文档|报告|大纲|下载/i.test(text) && !isTableRequest;
 
-    if (isDataRequest) {
-        systemInstruction = "\n\n(IMPORTANT SYSTEM INSTRUCTION: If the user provides a file or asks for data analysis/extraction, you MUST output the result strictly as a CSV code block. Do NOT use Markdown tables. Do NOT provide conversational filler or analysis unless explicitly asked. Just provide the data in CSV format.)";
+    if (isTableRequest) {
+        // 强制 CSV
+        systemInstruction = "\n\n(SYSTEM: Output result strictly as a CSV code block for Excel.)";
+    } else if (isDocRequest) {
+        // 强制 Document Block
+        systemInstruction = "\n\n(SYSTEM: The user wants a downloadable document. Wrap your response in a code block with language 'document'. Do NOT use other formats.)";
     }
+    // 否则：正常聊天，什么都不加
 
     let appendedText = text + systemInstruction;
 
     if (attachments.length > 0) {
       for (const file of attachments) {
         fileInfos.push({ name: file.name, type: file.type });
-
         if (file.type.startsWith("image/")) {
           try {
             const compressedBase64 = await compressImage(file);
             processedImages.push(compressedBase64);
           } catch (e) {
-            console.error("Image compress failed", e);
             const reader = new FileReader();
-            const base64 = await new Promise<string>((resolve) => { 
-              reader.onload = (e) => resolve(e.target?.result as string); 
-              reader.readAsDataURL(file); 
-            });
+            const base64 = await new Promise<string>((resolve) => { reader.onload = (e) => resolve(e.target?.result as string); reader.readAsDataURL(file); });
             processedImages.push(base64);
           }
         } 
@@ -450,10 +480,7 @@ export default function Home() {
              const arrayBuffer = await file.arrayBuffer();
              const result = await mammoth.extractRawText({ arrayBuffer });
              appendedText += `\n\n=== Word文档内容 (${file.name}) ===\n${result.value}\n`;
-           } catch(e) {
-             console.error(e);
-             alert(`解析 Word 文档失败: ${file.name}`);
-           }
+           } catch(e) {}
         }
         else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
            try {
@@ -462,41 +489,26 @@ export default function Home() {
              const sheetName = workbook.SheetNames[0]; 
              const csv = XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName]);
              appendedText += `\n\n=== 表格数据 (${file.name}) ===\n${csv}\n`;
-           } catch(e) {
-             console.error(e);
-             alert(`解析 Excel 表格失败: ${file.name}`);
-           }
+           } catch(e) {}
         }
         else if (
             file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".csv") || 
             file.name.endsWith(".md") || file.name.endsWith(".json") || file.name.endsWith(".js") || file.name.endsWith(".py")
         ) {
            const reader = new FileReader();
-           const textContent = await new Promise<string>((resolve) => {
-             reader.onload = (e) => resolve(e.target?.result as string);
-             reader.readAsText(file);
-           });
+           const textContent = await new Promise<string>((resolve) => { reader.onload = (e) => resolve(e.target?.result as string); reader.readAsText(file); });
            appendedText += `\n\n[文件内容 ${file.name}]:\n${textContent}\n`;
         } 
-        else {
-           alert(`暂不支持解析 ${file.name}，请复制内容粘贴。`);
-        }
       }
     }
 
-    const newUserMsg = { 
-        role: 'user', 
-        content: { text: text, images: processedImages, fileInfos: fileInfos } 
-    };
+    const newUserMsg = { role: 'user', content: { text: text, images: processedImages, fileInfos: fileInfos } };
     const newHistory = [...messages, newUserMsg];
     setMessages(newHistory); 
 
     const historyForAi = newHistory.map(m => ({
       role: m.role,
-      content: { 
-         text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text),
-         images: (m.content as any).images || []
-      }
+      content: { text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text), images: (m.content as any).images || [] }
     }));
 
     try {
@@ -505,13 +517,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: historyForAi, model: modelId, persona: roleId }),
       });
-      
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      
       setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
       let fullResponseText = "";
-
       while (true) {
         const { done, value } = await reader?.read()!;
         if (done) break;
@@ -524,31 +533,13 @@ export default function Home() {
           return newMsgs;
         });
       }
-
       const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
-      
       await fetch('/api/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-              userId: user.id,
-              chatId: currentChatId, 
-              messages: finalMessages,
-              title: currentChatId ? undefined : text.slice(0, 30) 
-          })
-      }).then(res => res.json()).then(data => {
-          if (data.chat) {
-              setCurrentChatId(data.chat.id); 
-              fetchChatList(user.id); 
-          }
-      });
-
-    } catch (e) {
-      console.error(e);
-      alert("发送失败：内容太长或网络错误");
-    } finally {
-      setIsLoading(false);
-    }
+          body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) })
+      }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
+    } catch (e) { alert("发送失败"); } finally { setIsLoading(false); }
   };
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
@@ -557,11 +548,7 @@ export default function Home() {
 
   return (
     <div className={`flex min-h-screen transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'} overflow-hidden`}>
-      
-      {/* Toast 组件 */}
       <Toast show={toastState.show} type={toastState.type} message={toastState.msg} />
-
-      {/* 左侧侧边栏 */}
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col shrink-0 overflow-hidden relative z-20`}>
          <div className="p-4 flex flex-col gap-2">
             <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
@@ -569,76 +556,22 @@ export default function Home() {
          </div>
          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
-            {chatList.map(chat => (
-                <div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}>
-                    <div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div>
-                    <button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button>
-                </div>
-            ))}
-            {chatList.length === 0 && <div className="text-center text-[10px] text-slate-300 py-10">暂无历史记录</div>}
+            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-            <div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
-                <div className="flex-1 overflow-hidden">
-                    <div className="font-bold text-xs truncate">{user.nickname}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">${user.balance}</div>
-                </div>
-            </div>
-         </div>
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">${user.balance}</div></div></div></div>
       </div>
-
-      {/* 右侧主聊天区 */}
       <div className="flex-1 flex flex-col h-screen relative">
-          
-          {/* 顶部导航 */}
-          <div className={`h-14 flex items-center justify-between px-4 border-b shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-            <div className="flex items-center gap-2">
-                <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Server size={18} className="rotate-90"/></button>
-                <div className="font-bold text-sm text-slate-400 flex items-center gap-2">{currentChatId ? '历史对话' : '新对话'}</div>
-            </div>
-            <div className="flex items-center gap-2">
-                <button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button>
-            </div>
-          </div>
-
-          {/* 聊天内容区 */}
+          <div className={`h-14 flex items-center justify-between px-4 border-b shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}><div className="flex items-center gap-2"><button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><Server size={18} className="rotate-90"/></button><div className="font-bold text-sm text-slate-400 flex items-center gap-2">{currentChatId ? '历史对话' : '新对话'}</div></div><div className="flex items-center gap-2"><button onClick={toggleTheme} className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={14} /> : <Moon size={14} />}</button></div></div>
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
              <div className="max-w-3xl mx-auto space-y-6">
-                {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'} text-white`}>🧊</div>
-                        <h2 className="text-2xl font-black mb-8">有什么可以帮您的？</h2>
-                        <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
-                            {["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (
-                                <button key={idx} onClick={() => handleSendSimple(txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>{txt}</button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
+                {messages.length === 0 && (<div className="flex flex-col items-center justify-center py-20 text-center"><div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl mb-6 shadow-xl ${isDarkMode ? 'bg-slate-800' : 'bg-slate-900'} text-white`}>🧊</div><h2 className="text-2xl font-black mb-8">有什么可以帮您的？</h2><div className="grid grid-cols-2 gap-3 w-full max-w-lg">{["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (<button key={idx} onClick={() => handleSendSimple(txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-100 hover:bg-slate-50'}`}>{txt}</button>))}</div></div>)}
                 {messages.map((m, i) => {
                     const { cleanText, suggestions } = parseMessageContent(m.content);
                     return (
                         <div key={i} className={`flex gap-3 ${m.role==='user'?'justify-end':'justify-start'}`}>
                             {m.role!=='user' && <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs shrink-0">🧊</div>}
                             <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100')}`}>
-                                {m.role === 'user' && typeof m.content === 'object' ? (
-                                    <div className="space-y-2">
-                                        {m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}
-                                        {m.content.fileInfos?.length > 0 && (
-                                           <div className="flex flex-wrap gap-2 mb-2">
-                                             {m.content.fileInfos.map((f: any, idx: number) => (
-                                               <div key={idx} className="flex items-center gap-2 bg-white/20 p-2 rounded-lg text-xs border border-white/10">
-                                                 <FileText size={14} className="text-white" />
-                                                 <span className="font-bold text-white truncate max-w-[150px]">{f.name}</span>
-                                               </div>
-                                             ))}
-                                           </div>
-                                        )}
-                                        <div className="text-sm whitespace-pre-wrap">{m.content.text}</div>
-                                    </div>
-                                ) : (
+                                {m.role === 'user' && typeof m.content === 'object' ? (<div className="space-y-2">{m.content.images?.length > 0 && <div className="flex gap-2">{m.content.images.map((img:any,idx:number)=>(<img key={idx} src={img} className="w-20 h-20 rounded-lg object-cover bg-white" alt="up"/>))}</div>}{m.content.fileInfos?.length > 0 && (<div className="flex flex-wrap gap-2 mb-2">{m.content.fileInfos.map((f: any, idx: number) => (<div key={idx} className="flex items-center gap-2 bg-white/20 p-2 rounded-lg text-xs border border-white/10"><FileText size={14} className="text-white" /><span className="font-bold text-white truncate max-w-[150px]">{f.name}</span></div>))}</div>)}<div className="text-sm whitespace-pre-wrap">{m.content.text}</div></div>) : (
                                     <div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}>
                                         <ReactMarkdown 
                                           remarkPlugins={[remarkGfm]}
@@ -648,41 +581,21 @@ export default function Home() {
                                                 const text = String(children).replace(/\n$/, '');
                                                 const isGenerating = isLoading && i === messages.length - 1; 
 
-                                                // CSV 表格卡片
+                                                // ✅ [绿色卡片] CSV 表格
                                                 if (!inline && (match?.[1] === 'csv' || text.includes(','))) {
                                                     const lines = text.split('\n');
                                                     if(lines.length > 2 && lines[0].includes(',')) {
-                                                      return (
-                                                        <div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
-                                                            <div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}>
-                                                                <div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-amber-600' : 'text-green-700 dark:text-green-400'}`}>
-                                                                    {isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}
-                                                                    <span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span>
-                                                                </div>
-                                                                <span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span>
-                                                            </div>
-                                                            <div className="p-4 flex gap-3 relative">
-                                                                {isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 数据写入中...</div></div>}
-                                                                <Button onClick={() => handlePreviewTable(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button>
-                                                                <Button onClick={() => handleDownloadExcel(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 导出 Excel</Button>
-                                                            </div>
-                                                        </div>
-                                                      )
+                                                      return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-green-50 dark:bg-green-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-amber-600' : 'text-green-700 dark:text-green-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileSpreadsheet size={16} />}<span>{isGenerating ? '正在生成数据表格...' : '已生成数据表格'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 flex gap-3 relative">{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 数据写入中...</div></div>}<Button onClick={() => handlePreviewTable(text)} variant="outline" disabled={isGenerating} className="flex-1 h-9 text-xs font-bold gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900">{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Maximize2 size={14} />} 在线预览</Button><Button onClick={() => handleDownloadExcel(text)} disabled={isGenerating} className={`flex-1 h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 导出 Excel</Button></div></div>)
                                                     }
                                                 }
 
+                                                // ✅ [新增] 蓝色卡片 Word 文档
+                                                if (!inline && match?.[1] === 'document') {
+                                                    return (<div className="my-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 overflow-hidden shadow-sm"><div className={`px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between transition-colors ${isGenerating ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-blue-50 dark:bg-blue-900/20'}`}><div className={`flex items-center gap-2 font-bold text-xs ${isGenerating ? 'text-blue-600' : 'text-blue-700 dark:text-blue-400'}`}>{isGenerating ? <Loader2 size={16} className="animate-spin"/> : <FileType size={16} />}<span>{isGenerating ? '正在生成文档...' : '已生成 Word 文档'}</span></div><span className="text-[10px] text-slate-400 font-mono">{(text.length / 1024).toFixed(1)} KB</span></div><div className="p-4 relative"><div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg text-xs text-slate-600 dark:text-slate-400 max-h-32 overflow-hidden mb-3 font-mono border border-slate-200 dark:border-slate-700">{text.slice(0, 200)}...</div>{isGenerating && <div className="absolute inset-0 bg-white/50 dark:bg-black/50 z-10 flex items-center justify-center backdrop-blur-[1px]"><div className="bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full shadow-lg text-xs font-bold flex items-center gap-2"><Loader2 size={12} className="animate-spin"/> 正在撰写...</div></div>}<Button onClick={() => handleDownloadWord(text)} disabled={isGenerating} className={`w-full h-9 text-xs font-bold gap-2 border-none shadow-md ${isGenerating ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'}`}>{isGenerating ? <LockIcon size={14} className="opacity-50"/> : <Download size={14} />} 下载 Word 文档</Button></div></div>)
+                                                }
+
                                                 if (!inline) {
-                                                    return (
-                                                        <div className="relative mb-4 group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-                                                            <div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700">
-                                                                <span className="text-[10px] font-mono text-slate-500 uppercase">{match?.[1] || 'Code'}</span>
-                                                                <CopyButton text={text} />
-                                                            </div>
-                                                            <pre className="p-4 bg-slate-50 dark:bg-slate-900 overflow-x-auto text-xs font-mono">
-                                                                <code className={className} {...props}>{children}</code>
-                                                            </pre>
-                                                        </div>
-                                                    )
+                                                    return (<div className="relative mb-4 group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700"><div className="flex justify-between items-center bg-slate-100 dark:bg-slate-800 px-3 py-1.5 border-b border-slate-200 dark:border-slate-700"><span className="text-[10px] font-mono text-slate-500 uppercase">{match?.[1] || 'Code'}</span><CopyButton text={text} /></div><pre className="p-4 bg-slate-50 dark:bg-slate-900 overflow-x-auto text-xs font-mono"><code className={className} {...props}>{children}</code></pre></div>)
                                                 }
                                                 return <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-red-500 font-mono text-xs" {...props}>{children}</code>
                                             },
@@ -698,11 +611,7 @@ export default function Home() {
                                     </div>
                                 )}
                             </div>
-                            {m.role === 'user' && (
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">
-                                    {user.nickname[0]}
-                                </div>
-                            )}
+                            {m.role === 'user' && (<div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm mt-1">{user.nickname[0]}</div>)}
                         </div>
                     );
                 })}
@@ -710,46 +619,9 @@ export default function Home() {
                 <div ref={scrollRef} className="h-4" />
              </div>
           </div>
-
-          <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}>
-             <div className="max-w-3xl mx-auto">
-                 <ChatInput onSend={handleChatSubmit} disabled={isLoading} />
-             </div>
-          </div>
-
-          <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-            <DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0">
-                    <h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3>
-                    <Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button>
-                </div>
-                <div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">
-                    {previewTableData && (
-                        <div className="absolute inset-0 overflow-auto">
-                            <table className="min-w-full text-sm text-left border-collapse">
-                                <thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm">
-                                    <tr>
-                                        {previewTableData.split('\n')[0].split(',').map((h, i) => (
-                                            <th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (
-                                        <tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                            {row.split(',').map((cell, j) => (
-                                                <td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>
-                                            ))}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            </DialogContent>
-          </Dialog>
-
+          <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}><div className="max-w-3xl mx-auto"><ChatInput onSend={handleChatSubmit} disabled={isLoading} /></div></div>
+          <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
+          {/* 其他弹窗省略... */}
           <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="sm:max-w-md p-6"><div className="flex flex-col items-center"><div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">{user.nickname[0]}</div><h2 className="text-xl font-bold">{user.nickname}</h2><p className="text-slate-400 text-xs mb-6">{user.account}</p><div className={`rounded-2xl p-5 border shadow-sm w-full mb-6 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}><div className="flex justify-between items-start mb-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest"><span>可用余额</span><button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="text-blue-600 font-bold">充值</button></div><div className="text-4xl font-black font-mono">${user.balance}</div></div><Button onClick={handleLogout} variant="destructive" className="w-full">退出登录</Button></div></DialogContent></Dialog>
           <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
           {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
