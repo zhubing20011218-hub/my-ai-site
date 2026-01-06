@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import TextareaAutosize from "react-textarea-autosize";
-// ✅ 引入 Wand2 (魔法棒图标) 和 Loader2 (加载圈)
-import { Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText, Video, Image as ImageIcon, Sparkles, Briefcase, Smile, BarChart3, Wand2, Loader2 } from "lucide-react";
+import { 
+  Send, Paperclip, X, Zap, Brain, Star, ChevronDown, FileText, Video, 
+  Image as ImageIcon, Sparkles, Briefcase, Smile, BarChart3, Wand2, Loader2, 
+  Copy, Check, ArrowRight 
+} from "lucide-react";
+// ✅ 引入弹窗组件 (复用项目中已有的 UI 组件)
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 // ✅ [配置保留] 全平台模型配置
 export const MODEL_OPTIONS = [
@@ -15,7 +21,7 @@ export const MODEL_OPTIONS = [
   { id: "banana-sdxl", name: "Banana SDXL", desc: "极速绘图", icon: ImageIcon, color: "text-yellow-500", type: "image" },
 ];
 
-// ✅ [配置保留] 角色预设 (既然你不删，我们就完整保留)
+// ✅ [配置保留] 角色预设
 export const ROLE_OPTIONS = [
   { id: "general", name: "通用助手", icon: Sparkles, color: "text-slate-600", hint: "有问题尽管问我..." },
   { id: "tiktok_script", name: "爆款脚本", icon: Video, color: "text-pink-500", hint: "输入产品名，生成黄金前3秒脚本..." },
@@ -38,9 +44,14 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  // ✅ [新增] 优化加载状态
-  const [isOptimizing, setIsOptimizing] = useState(false);
   
+  // ✅ [新增] 优化器弹窗相关状态
+  const [isOptimizerOpen, setIsOptimizerOpen] = useState(false);
+  const [optInput, setOptInput] = useState(""); // 弹窗里的输入
+  const [optResult, setOptResult] = useState(""); // 优化后的结果
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const currentModel = MODEL_OPTIONS.find(m => m.id === selectedModelId) || MODEL_OPTIONS[0];
@@ -60,25 +71,46 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     }
   };
 
-  // ✅ [新增] 调用优化接口
-  const handleOptimize = async () => {
-    if (!input.trim()) return;
+  // ✅ [新增] 打开优化器弹窗
+  const openOptimizer = () => {
+    setOptInput(input); // 把当前聊天框的内容带进去
+    setOptResult("");   // 清空上次的结果
+    setIsOptimizerOpen(true);
+  };
+
+  // ✅ [新增] 执行优化逻辑
+  const runOptimization = async () => {
+    if (!optInput.trim()) return;
     setIsOptimizing(true);
+    setOptResult("");
     try {
       const res = await fetch('/api/optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input })
+        body: JSON.stringify({ text: optInput })
       });
       const data = await res.json();
       if (data.optimizedText) {
-        setInput(data.optimizedText); // 直接替换输入框内容
+        setOptResult(data.optimizedText);
       }
     } catch (e) {
       console.error("Optimization failed", e);
     } finally {
       setIsOptimizing(false);
     }
+  };
+
+  // ✅ [新增] 复制结果
+  const handleCopyResult = () => {
+    navigator.clipboard.writeText(optResult);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ✅ [新增] 采用结果（填回主输入框并关闭）
+  const handleApplyResult = () => {
+    setInput(optResult);
+    setIsOptimizerOpen(false);
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -149,7 +181,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
           <div className="flex items-center gap-1">
             <button onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" title="上传文件"><Paperclip size={18} /></button>
 
-            {/* ✅ [保留] 角色选择器 */}
             <div className="relative">
               <button onClick={() => setShowRoleMenu(!showRoleMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-lg transition">
                 <currentRole.icon size={14} className={currentRole.color} />
@@ -170,7 +201,6 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               )}
             </div>
 
-            {/* ✅ [保留] 模型选择器 */}
             <div className="relative">
               <button onClick={() => setShowModelMenu(!showModelMenu)} className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 rounded-lg transition">
                 <currentModel.icon size={14} />
@@ -192,18 +222,15 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
               )}
             </div>
 
-            {/* ✅ [新增] 帮我写/指令优化按钮 (在你指定的位置) */}
-            {input.trim().length > 0 && (
-                <button 
-                    onClick={handleOptimize} 
-                    disabled={isOptimizing}
-                    className="flex items-center gap-1 px-2 py-1.5 ml-1 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg text-xs font-bold transition-all animate-in fade-in zoom-in"
-                    title="AI 自动优化指令"
-                >
-                    {isOptimizing ? <Loader2 size={14} className="animate-spin"/> : <Wand2 size={14} />}
-                    <span>帮我写</span>
-                </button>
-            )}
+            {/* ✅ [修改] 帮我写按钮：常亮，点击弹窗 */}
+            <button 
+                onClick={openOptimizer}
+                className="flex items-center gap-1 px-2 py-1.5 ml-1 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg text-xs font-bold transition-all"
+                title="AI 帮我写/优化指令"
+            >
+                <Wand2 size={14} />
+                <span className="hidden sm:inline">帮我写</span>
+            </button>
 
           </div>
 
@@ -211,6 +238,67 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         </div>
       </div>
       <div className="text-center text-[10px] text-gray-300 mt-3 font-mono">Eureka AI • Multi-Role Engine</div>
+
+      {/* ✅ [新增] 优化器独立弹窗 */}
+      <Dialog open={isOptimizerOpen} onOpenChange={setIsOptimizerOpen}>
+        <DialogContent className="sm:max-w-xl p-0 overflow-hidden border-none rounded-2xl shadow-2xl bg-white dark:bg-slate-900">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-purple-50/50 dark:bg-slate-900/50">
+                <div className="flex items-center gap-2 text-purple-600 font-black text-sm">
+                    <Wand2 size={18} /> 
+                    <span>帮我写 / 指令优化</span>
+                </div>
+                {/* 这里的关闭按钮由 DialogContent 自动处理，或者我们可以加一个 */}
+            </div>
+            
+            <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500">你的简短想法</label>
+                    <TextareaAutosize 
+                        minRows={2}
+                        className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm focus:ring-2 focus:ring-purple-500/20 outline-none resize-none"
+                        placeholder="例如：写个关于咖啡的文案..."
+                        value={optInput}
+                        onChange={(e) => setOptInput(e.target.value)}
+                    />
+                </div>
+
+                <div className="flex justify-end">
+                    <Button 
+                        onClick={runOptimization} 
+                        disabled={isOptimizing || !optInput.trim()}
+                        className="bg-purple-600 hover:bg-purple-700 text-white h-9 text-xs font-bold gap-2"
+                    >
+                        {isOptimizing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        AI 立即优化
+                    </Button>
+                </div>
+
+                {/* 结果显示区 */}
+                {optResult && (
+                    <div className="animate-in fade-in slide-in-from-bottom-2 space-y-2">
+                        <div className="flex justify-between items-center">
+                            <label className="text-xs font-bold text-slate-500">优化结果</label>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={handleCopyResult} 
+                                    className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded text-slate-600 transition-colors"
+                                >
+                                    {copied ? <Check size={12} className="text-green-500"/> : <Copy size={12}/>} 
+                                    {copied ? "已复制" : "复制"}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-purple-100 dark:border-slate-800 text-sm text-slate-700 dark:text-slate-300 max-h-[200px] overflow-y-auto whitespace-pre-wrap leading-relaxed shadow-inner">
+                            {optResult}
+                        </div>
+                        <Button onClick={handleApplyResult} className="w-full bg-slate-900 hover:bg-slate-800 text-white h-10 font-bold text-xs gap-2 shadow-lg">
+                            <ArrowRight size={14} /> 采用并填入输入框
+                        </Button>
+                    </div>
+                )}
+            </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
