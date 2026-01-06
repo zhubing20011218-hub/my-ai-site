@@ -45,17 +45,23 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 分支 3：Gemini 文字模型 (含联网 + 猜你想问)
+    // 🧠 分支 3：Gemini 文字模型 (终极稳定版)
     // ============================================================
     
-    // 🎯 映射你的高权限模型 (已清理引用标记)
+    // 🎯 映射逻辑优化：使用高配额模型
     let targetModel = 'gemini-2.5-flash'; 
 
-    if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
-    else if (model === 'gemini-1.5-pro') targetModel = 'gemini-2.5-pro';   
-    else if (model === 'gemini-2.0-flash-thinking-exp') targetModel = 'gemini-exp-1206'; 
+    if (model === 'gemini-2.0-flash-exp') {
+        targetModel = 'gemini-2.5-flash'; // ⚡ 极速版 (Flash)
+    } else if (model === 'gemini-1.5-pro') {
+        targetModel = 'gemini-2.5-pro';   // ⚖️ 均衡版 (Pro)
+    } else if (model === 'gemini-2.0-flash-thinking-exp') {
+        // 🔥 [关键修改] 从 exp-1206 切换到 gemini-2.5-pro
+        // 理由：官方报错建议迁移到 2.5 Pro 以获取更高配额，且 2.5 Pro 也支持 thinking 
+        targetModel = 'gemini-2.5-pro'; 
+    }
 
-    // ✅ 强制生成“猜你想问”的指令
+    // ✅ 系统指令：强制生成“猜你想问”
     let systemInstruction = `You are Eureka, a helpful AI assistant. 
     IMPORTANT: After your main response, you MUST generate 3 related follow-up questions that the user might want to ask next.
     Format them strictly like this at the very end:
@@ -65,8 +71,9 @@ export async function POST(req: Request) {
     
     (Do not add any other text after the related questions).`;
     
-    if (targetModel === 'gemini-exp-1206') {
-        systemInstruction += " You are in Deep Thinking Mode. Analyze thoroughly.";
+    // 如果是 Thinking 模式，加强深度思考的 Prompt，因为 2.5 Pro 能力很强
+    if (model === 'gemini-2.0-flash-thinking-exp') {
+        systemInstruction += " You are in Deep Thinking Mode. Analyze the problem step-by-step with high logic precision.";
     }
     if (persona === 'tiktok_script') systemInstruction += " You are a TikTok viral script expert.";
 
@@ -117,6 +124,7 @@ export async function POST(req: Request) {
     console.error("Chat Route Error:", error);
     let userMsg = "服务暂时繁忙，请稍后再试。";
     if (error.toString().includes("402")) userMsg = "Replicate 余额不足，请充值。";
+    if (error.toString().includes("429")) userMsg = "该模型调用过于频繁，请稍后再试或切换其他模型。"; // 针对 429 错误的提示
     return new Response(`❌ **请求失败**\n\n${userMsg}\n\n*Debug info: ${error.message}*`);
   }
 }
