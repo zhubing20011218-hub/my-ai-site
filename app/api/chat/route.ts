@@ -13,7 +13,6 @@ export const runtime = "nodejs";
 export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
 
-// 辅助函数：计算宽高
 function calculateDimensions(ratio: string, resolution: string) {
     let width = 1024;
     let height = 576;
@@ -32,7 +31,6 @@ function calculateDimensions(ratio: string, resolution: string) {
         height = baseSize;
         width = Math.round(height * (wRatio / hRatio));
     }
-    // 必须是 64 的倍数
     width = Math.floor(width / 64) * 64;
     height = Math.floor(height / 64) * 64;
     return { width, height };
@@ -50,7 +48,6 @@ export async function POST(req: Request) {
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
           { input: { prompt: prompt, width: 1024, height: 1024, refine: "expert_ensemble_refiner" } }
         );
-        // 图片继续用 Markdown 格式返回，保持兼容
         return new Response(`![Generated Image](${output[0]})\n\n✅ **绘图完成！**`);
     }
 
@@ -63,7 +60,6 @@ export async function POST(req: Request) {
         let videoOutput: any;
         
         if (image) {
-            // 图生视频
             videoOutput = await replicate.run(
               "stability-ai/stable-video-diffusion:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
               {
@@ -77,7 +73,6 @@ export async function POST(req: Request) {
               }
             );
         } else {
-            // 文生视频
             const { width, height } = calculateDimensions(aspectRatio || "16:9", resolution || "1080p");
             const fps = 24;
             const num_frames = (duration || 5) * fps; 
@@ -90,12 +85,19 @@ export async function POST(req: Request) {
             );
         }
         
-        // 获取 URL 字符串
-        const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
-        console.log(`[API Video] Done. URL: ${remoteUrl}`);
+        // ✅ 修复核心：寻找真正的 mp4 文件
+        let remoteUrl = "";
+        if (Array.isArray(videoOutput)) {
+            // 优先找 mp4
+            const videoFile = videoOutput.find(url => typeof url === 'string' && url.endsWith('.mp4'));
+            // 找不到 mp4 就拿第一个（万一模型变了）
+            remoteUrl = videoFile || videoOutput[0];
+        } else {
+            remoteUrl = videoOutput;
+        }
 
-        // 🚨【关键修改】直接返回纯文本 URL 字符串，不要 JSON 包装
-        // 这样前端收到的一定是 "https://..."，不可能是 [object Object]
+        console.log(`[API Video] Done. Final URL: ${remoteUrl}`);
+        // 返回纯文本 URL
         return new Response(String(remoteUrl));
     }
 
@@ -140,7 +142,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
-    // 错误时返回纯文本错误信息
     return new Response(`Error: ${error.message}`, { status: 500 });
   }
 }

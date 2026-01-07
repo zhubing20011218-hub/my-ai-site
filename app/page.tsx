@@ -297,15 +297,11 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
       });
 
       // 🚨 核心修正：使用 .text() 而不是 .json()
-      // 之前这里 .json() 可能会把普通字符串当对象解析失败，或者把错误信息当 URL
       const data = await response.text();
 
       if (!response.ok) {
-          // 如果后端报错，data 就是错误信息
           alert(`生成失败：${data}`);
       } else {
-          // 如果成功，data 就是 URL 字符串
-          // 额外的检查：如果是图片模式，后端返回的是 Markdown，我们需要提取 URL
           if (type === 'image' && data.includes("![Generated Image]")) {
               const urlMatch = data.match(/\((https?:\/\/.*?)\)/);
               if (urlMatch) setResult(urlMatch[1]);
@@ -628,8 +624,16 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* 隐藏了 Sidebar 底部显示余额的部分 */}
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">专业版用户</div></div></div></div>
+         {/* ✅ 修复：将底部的 div 改为 button，并添加 z-50，确保可以点击 */}
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-50">
+             <button onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
+                <div className="flex-1 overflow-hidden">
+                    <div className="font-bold text-xs truncate">{user.nickname}</div>
+                    <div className="text-[10px] text-slate-400 font-mono">专业版用户</div>
+                </div>
+             </button>
+         </div>
       </div>
 
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
