@@ -20,11 +20,10 @@ function calculateDimensions(ratio: string, resolution: string) {
     let height = 576;
     let baseSize = 1024; // 默认基准
 
-    // 设置基准大小 (以长边为准)
     if (resolution === '720p') baseSize = 1280;
     if (resolution === '1080p') baseSize = 1920;
     if (resolution === '2k') baseSize = 2560;
-    if (resolution === '4k') baseSize = 3840; // 注意：4k生成非常慢
+    if (resolution === '4k') baseSize = 3840;
 
     const [wRatio, hRatio] = ratio.split(':').map(Number);
     
@@ -36,7 +35,6 @@ function calculateDimensions(ratio: string, resolution: string) {
         width = Math.round(height * (wRatio / hRatio));
     }
 
-    // 确保是 64 的倍数 (视频模型要求)
     width = Math.floor(width / 64) * 64;
     height = Math.floor(height / 64) * 64;
 
@@ -48,7 +46,6 @@ export async function POST(req: Request) {
   console.log(`[API Start] Request received`);
 
   try {
-    // 📥 接收所有高级参数
     const { messages, model, aspectRatio, resolution, duration, image } = await req.json();
     const lastMessage = messages[messages.length - 1];
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
@@ -77,35 +74,26 @@ export async function POST(req: Request) {
         
         let videoOutput: any;
         
-        // 👉 情况 A：用户上传了图片 -> 使用图生视频模型 (SVD)
         if (image) {
             console.log(`[API Video] Mode: Image-to-Video (SVD)`);
-            // SVD 模型：stability-ai/stable-video-diffusion
             videoOutput = await replicate.run(
               "stability-ai/stable-video-diffusion:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
               {
                 input: {
-                  input_image: image, // Base64 图片
-                  video_length: "25_frames_with_svd_xt", // 默认长视频模式
+                  input_image: image, // 前端已压缩，这里直接发
+                  video_length: "25_frames_with_svd_xt",
                   sizing_strategy: "maintain_aspect_ratio",
                   frames_per_second: 6,
                   motion_bucket_id: 127
                 }
               }
             );
-        } 
-        // 👉 情况 B：纯文字 -> 使用文生视频模型 (Zeroscope)
-        else {
+        } else {
             console.log(`[API Video] Mode: Text-to-Video (Zeroscope)`);
-            
-            // 1. 计算参数
             const { width, height } = calculateDimensions(aspectRatio || "16:9", resolution || "1080p");
             const fps = 24;
-            const num_frames = (duration || 5) * fps; // 时长 * 帧率
+            const num_frames = (duration || 5) * fps; 
 
-            console.log(`[API Video Params] ${width}x${height}, ${duration}s (${num_frames} frames)`);
-
-            // 2. 调用模型
             videoOutput = await replicate.run(
               "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
               { 
@@ -120,12 +108,9 @@ export async function POST(req: Request) {
             );
         }
         
-        // 3. 处理结果 (通用)
-        // 注意：Replicate 有时返回的是数组，有时是字符串
         const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
         console.log(`[API Video] Generated Remote URL: ${remoteUrl}`);
 
-        // 4. 代理下载 (解决跨域和预览问题)
         const videoRes = await fetch(remoteUrl);
         if (!videoRes.ok) throw new Error("Failed to fetch video stream from source");
 
@@ -138,7 +123,7 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 分支 3：Gemini 文字模型 (保持原有流式逻辑)
+    // 🧠 分支 3：Gemini 文字模型
     // ============================================================
     
     let targetModel = 'gemini-2.5-flash'; 
