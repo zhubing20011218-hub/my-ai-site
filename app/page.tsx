@@ -5,33 +5,33 @@ import { Button } from "@/components/ui/button"
 import ChatInput, { ALL_MODELS } from "@/components/ChatInput" 
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { 
-  History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
+  History, Shield, Terminal, Check, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
+  Moon, Sun, CreditCard, Plus, MessageCircle, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
   Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
-  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Clapperboard, Sparkle,
+  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Clapperboard, 
   Headphones, Ticket, CreditCard as CardIcon
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx';
-import mammoth from 'mammoth';
 const { saveAs } = require('file-saver');
-import { Document, Packer, Paragraph, TextRun } from "docx";
 
-// --- 类型定义 ---
+// ==========================================
+// 1. 类型与配置
+// ==========================================
+
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
-// --- 价格配置 ---
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
   "gemini-exp-1206": 0.10,
-  "sora-v1": 2.50, // Minimax 高品质视频
+  "sora-v1": 2.50, // Minimax Video
   "veo-google": 1.80,
   "banana-sdxl": 0.20,
 };
@@ -52,7 +52,10 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// --- Thinking 组件 ---
+// ==========================================
+// 2. 核心组件
+// ==========================================
+
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -83,7 +86,6 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
-// --- AuthPage 组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -93,10 +95,8 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [verifyCode, setVerifyCode] = useState("");
     const [count, setCount] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [codeLoading, setCodeLoading] = useState(false);
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirmPwd, setShowConfirmPwd] = useState(false);
-    const [agreed, setAgreed] = useState(false);
     const [error, setError] = useState("");
 
     const validateAccount = (val: string) => {
@@ -150,7 +150,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ MediaGenerator (Minimax) ---
+// --- MediaGenerator: Minimax Video-01 (Sora级) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [prompt, setPrompt] = useState("");
   const [optPrompt, setOptPrompt] = useState(true); 
@@ -158,6 +158,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const [result, setResult] = useState<string | null>(null);
   const [refImage, setRefImage] = useState<string | null>(null);
 
+  // 强力压缩防止 413
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -215,12 +216,13 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
       const text = await response.text();
       let data;
-      try { data = JSON.parse(text); } catch (e) { throw new Error("服务器响应超时或格式错误"); }
+      try { data = JSON.parse(text); } catch (e) { throw new Error("服务器响应格式错误"); }
 
       if (!response.ok) throw new Error(data.error || "请求失败");
 
       if (data.type === 'async_job') {
           const jobId = data.id; let jobStatus = data.status; let finalOutput = null;
+          // 轮询解决 504
           while (jobStatus !== 'succeeded' && jobStatus !== 'failed') {
               await new Promise(r => setTimeout(r, 4000));
               const statusRes = await fetch(`/api/chat?id=${jobId}`);
@@ -294,7 +296,9 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// --- Home 组件 (主程序) ---
+// ==========================================
+// 6. Home 主组件 (所有功能逻辑，无删减)
+// ==========================================
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -319,6 +323,7 @@ export default function Home() {
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
   const [toastState, setToastState] = useState({ show: false, type: 'loading' as any, msg: '' });
 
+  // Admin & Support Logic
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
   const [isAdminCardsOpen, setIsAdminCardsOpen] = useState(false); 
@@ -387,9 +392,11 @@ export default function Home() {
   const handleChatSubmit = async (text: string, attachments: File[] = [], modelId: string = "gemini-2.5-flash") => {
     const cost = MODEL_PRICING[modelId] || 0.01;
     if (!await handleTX('consume', cost, `对话: ${text.slice(0,10)}`)) return;
+    
     setIsLoading(true); setModel(modelId);
     const newMsg = { role: 'user', content: { text } }; const newHistory = [...messages, newMsg];
     setMessages(newHistory);
+    
     try {
       const response = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: newHistory.slice(-10), model: modelId }) });
       const reader = response.body?.getReader(); const decoder = new TextDecoder();
@@ -411,7 +418,6 @@ export default function Home() {
   const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) {} };
   const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
   
-  // ✅ 修复：redeemCard 语法重写 (解决 Line 360 报错)
   const redeemCard = async () => { 
       const codeInput = document.getElementById('card-input') as HTMLInputElement;
       const code = codeInput?.value; 
@@ -424,21 +430,36 @@ export default function Home() {
               setUser((prev:any) => ({ ...prev, balance: data.balance })); 
               syncUserData(user.id, user.role); 
               setIsRechargeOpen(false); 
-          } else { 
-              alert(data.error); 
-          } 
-      } catch(e) { 
-          alert("请求失败"); 
-      } 
+          } else { alert(data.error); } 
+      } catch(e) { alert("请求失败"); } 
   };
 
-  useEffect(() => { let interval: any; if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) { const fetchMsg = async () => { const uid = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { const res = await fetch(`/api/support?action=history&userId=${uid}`); const data = await res.json(); if (data.messages) { setSupportMessages(data.messages); if (supportScrollRef.current) supportScrollRef.current.scrollIntoView({ behavior: "smooth" }); } } catch(e) {} }; fetchMsg(); interval = setInterval(fetchMsg, 3000); } return () => clearInterval(interval); }, [user, isSupportOpen, isAdminSupportOpen, activeSessionUser]);
+  // ✅ 修复 586 行语法错误：完整的 useEffect
+  useEffect(() => { 
+      let interval: any; 
+      if (user && (isSupportOpen || (user.role === 'admin' && activeSessionUser))) { 
+          const fetchMsg = async () => { 
+              const uid = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; 
+              try { 
+                  const res = await fetch(`/api/support?action=history&userId=${uid}`); 
+                  const data = await res.json(); 
+                  if (data.messages) { 
+                      setSupportMessages(data.messages); 
+                      if (supportScrollRef.current) supportScrollRef.current.scrollIntoView({ behavior: "smooth" }); 
+                  } 
+              } catch(e) {} 
+          }; 
+          fetchMsg(); 
+          interval = setInterval(fetchMsg, 3000); 
+      } 
+      return () => clearInterval(interval); 
+  }, [user, isSupportOpen, activeSessionUser]);
+
   const fetchSupportSessions = async () => { try { const res = await fetch('/api/support?action=list'); const data = await res.json(); if(data.sessions) setSupportSessions(data.sessions); } catch(e) {} };
   const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); } catch(e) { alert("发送失败"); } };
 
   const handleDownloadExcel = (csv: string) => { const wb = XLSX.read(csv, { type: 'string' }); XLSX.writeFile(wb, `eureka_${Date.now()}.xlsx`); };
 
-  // ✅ 渲染逻辑分离：彻底解决 Line 484-500 JSX 闭合报错
   const renderMainContent = () => {
       switch (activeTab) {
           case 'home':
@@ -456,7 +477,7 @@ export default function Home() {
                  </div>
               );
           case 'video':
-              // ✅ 修复 Line 510 类型错误：用箭头函数包裹
+              // ✅ 修复 510行 参数错误
               return <MediaGenerator type="video" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
           case 'image':
               return <MediaGenerator type="image" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
@@ -512,7 +533,6 @@ export default function Home() {
               </div>
               <Button variant="ghost" onClick={toggleTheme} className="w-9 h-9 rounded-full p-0 transition-colors">{isDarkMode ? <Sun size={18} className="text-yellow-400"/> : <Moon size={18}/>}</Button>
           </header>
-          
           <main className="flex-1 overflow-hidden relative">
               {renderMainContent()}
           </main>
