@@ -108,10 +108,11 @@ export async function POST(req: Request) {
             );
         }
         
+        // 🚀 核心修改：不再代理下载，直接返回远程链接
+        // Replicate 有时返回字符串，有时返回数组
         const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
         console.log(`[API Video] Generated Remote URL: ${remoteUrl}`);
 
-        // 🚀 核心修改：直接返回 URL，不再代理下载流 (避免超时和黑屏)
         return NextResponse.json({ 
             type: 'video', 
             url: remoteUrl 
