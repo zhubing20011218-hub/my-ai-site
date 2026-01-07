@@ -192,6 +192,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
+// --- ✨ 多媒体生成器 (Pro版：全自动无损压缩 + 异步轮询 + 状态检查) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
@@ -205,7 +206,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
   const availableModels = ALL_MODELS.filter(m => m.category === type);
 
-  // 压缩图片防止 413 错误
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -219,13 +219,11 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                   const MAX_HEIGHT = 1024;
                   let width = img.width;
                   let height = img.height;
-
                   if (width > height) {
                       if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                   } else {
                       if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                   }
-
                   canvas.width = width;
                   canvas.height = height;
                   const ctx = canvas.getContext('2d');
@@ -261,7 +259,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     
     if (type === 'video') {
         const warning = refImage ? "图生视频模式" : "文生视频模式";
-        if(!confirm(`${warning}：生成需 1-3 分钟，请勿刷新。确认继续？`)) return;
+        if(!confirm(`${warning}：生成需 1-3 分钟，期间请勿关闭页面 (支持后台运行)。确认继续？`)) return;
     }
 
     const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);
@@ -271,6 +269,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     setResult(null);
 
     try {
+      // 1. 发起任务 (返回任务 ID)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -284,35 +283,73 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         }),
       });
 
-      const data = await response.text();
+      // 🚨 如果是图片/文字 (同步)，直接得到结果文本
+      // 🚨 如果是视频 (异步)，得到 { type: 'async_job', id: ... } JSON
+      const contentType = response.headers.get("content-type");
+      
+      if (contentType && contentType.includes("application/json")) {
+          const data = await response.json();
+          
+          if (data.type === 'async_job') {
+              // --- 进入轮询模式 ---
+              const jobId = data.id;
+              let jobStatus = data.status;
+              let finalOutput = null;
 
-      if (!response.ok) {
-          alert(`生成失败：${data}`);
+              // 循环检查，直到成功或失败
+              while (jobStatus !== 'succeeded' && jobStatus !== 'failed' && jobStatus !== 'canceled') {
+                  await new Promise(r => setTimeout(r, 3000)); // 等3秒
+                  
+                  const statusRes = await fetch(`/api/chat?id=${jobId}`);
+                  const statusData = await statusRes.json();
+                  
+                  jobStatus = statusData.status;
+                  if (jobStatus === 'succeeded') {
+                      finalOutput = statusData.output;
+                  } else if (jobStatus === 'failed') {
+                      throw new Error("任务被后台终止 (Failed)");
+                  }
+              }
+
+              if (finalOutput) {
+                  // 视频模型可能返回 [url] 数组或 url 字符串
+                  const url = Array.isArray(finalOutput) ? finalOutput[0] : finalOutput;
+                  setResult(url);
+                  showToast('success', '视频生成完毕！');
+              }
+          } 
+          // 兼容图片生成的 JSON 返回
+          else if (data.url) {
+              setResult(data.url);
+              showToast('success', '图片生成完毕！');
+          } else {
+              throw new Error(data.error || "未知错误");
+          }
       } else {
-          // 如果是图片，提取 markdown 中的 URL
-          if (type === 'image' && data.includes("![Generated Image]")) {
-              const urlMatch = data.match(/\((https?:\/\/.*?)\)/);
+          // 纯文本结果 (Gemini 聊天)
+          const text = await response.text();
+          // 如果图片接口返回了 markdown 格式
+          if (type === 'image' && text.includes("![Generated Image]")) {
+              const urlMatch = text.match(/\((https?:\/\/.*?)\)/);
               if (urlMatch) setResult(urlMatch[1]);
           } else {
-              // 视频直接是 URL
-              setResult(data);
+              setResult(text);
           }
           showToast('success', '生成成功！');
       }
 
     } catch (e: any) {
+      console.error(e);
       alert(`生成出错：${e.message}`);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ✅ 修复：简单直接的下载方式
   const handleForceDownload = async () => {
     if (!result) return;
-    // 直接打开新窗口，这是最稳妥的下载方式，不走 blob
     window.open(result, '_blank');
-    showToast('success', '已在新窗口打开下载');
+    showToast('success', '正在尝试打开下载链接...');
   };
 
   return (
@@ -450,7 +487,8 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
              {result && !isGenerating && (
                 <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
-                    {type === 'video' ? (
+                    {/* ✅ 根据结果类型或后缀判断显示 video 还是 img */}
+                    {type === 'video' || (typeof result === 'string' && result.endsWith('.mp4')) ? (
                         <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
                     ) : (
                         <img src={result} alt="Generated" className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10 object-contain" />
@@ -463,6 +501,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
+// ... Home 组件主体 ...
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -609,17 +648,17 @@ export default function Home() {
          </div>
          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
-            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-500 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
+            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* ✅ 修复核心：将底部的 div 改为 button，并添加 z-50 和 relative，确保绝对可以点击 */}
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-50">
-             <button onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
+         {/* ✅ 修复核心：将底部的 div 改为 button，并添加 z-[100] 和 relative，确保绝对可以点击 */}
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-[100]">
+             <div onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
                 <div className="flex-1 overflow-hidden">
                     <div className="font-bold text-xs truncate">{user.nickname}</div>
                     <div className="text-[10px] text-slate-400 font-mono">专业版用户</div>
                 </div>
-             </button>
+             </div>
          </div>
       </div>
 
