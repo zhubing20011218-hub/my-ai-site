@@ -9,7 +9,7 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
-// ✅ 保持 Node.js 环境 + 300秒超时 (Pro 专属)
+// ✅ 必须使用 nodejs 运行时来支持 300秒 超时
 export const runtime = "nodejs"; 
 export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
 
     // ============================================================
-    // 🎨 分支 1：绘图模型
+    // 🎨 分支 1：绘图模型 (Banana SDXL) -> 返回 JSON
     // ============================================================
     if (model === 'banana-sdxl') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
           { input: { prompt: prompt, width: 1024, height: 1024, refine: "expert_ensemble_refiner" } }
         );
-        // ✅ 改为 JSON 返回
+        // ✅ 修复乱码：包装成 JSON 返回
         return NextResponse.json({ 
             type: 'image', 
             url: output[0], 
@@ -41,14 +41,14 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🎬 分支 2：视频模型 (高清 Pro 版)
+    // 🎬 分支 2：视频模型 (高清 Pro 版) -> 返回 JSON
     // ============================================================
     if (model === 'sora-v1' || model === 'veo-google') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         
         console.log(`[API Video] Starting generation...`);
         
-        // 高清参数
+        // 高清参数，Pro 账号 300s 足够
         const videoOutput: any = await replicate.run(
           "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
           { 
@@ -64,8 +64,7 @@ export async function POST(req: Request) {
         
         console.log(`[API Video] Success: ${videoOutput[0]}`);
         
-        // ✅ 核心修复：强制使用 JSON 包裹 URL，不再直接返回流/字符串
-        // 这样前端就不会把视频当成乱码文字处理了
+        // ✅ 修复乱码：包装成 JSON 返回
         return NextResponse.json({ 
             type: 'video', 
             url: videoOutput[0] 
@@ -73,13 +72,13 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 分支 3：Gemini 文字模型
+    // 🧠 分支 3：Gemini 文字模型 -> 保持 Stream (流式)
     // ============================================================
     
     let targetModel = 'gemini-2.5-flash'; 
     if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
     else if (model === 'gemini-1.5-pro') targetModel = 'gemini-2.5-pro';   
-    else if (model === 'gemini-exp-1206') targetModel = 'gemini-exp-1206'; 
+    else if (model === 'gemini-exp-1206' || model === 'gemini-2.0-flash-thinking-exp') targetModel = 'gemini-exp-1206'; 
 
     let systemInstruction = `You are Eureka, a helpful AI assistant. 
     IMPORTANT: After your main response, you MUST generate 3 related follow-up questions.
@@ -134,8 +133,7 @@ export async function POST(req: Request) {
     if (error.toString().includes("402")) userMsg = "额度不足，请充值。";
     if (error.toString().includes("429")) userMsg = "调用太频繁，请稍后再试。"; 
     
-    // 如果是普通文字请求，返回文本；如果是多媒体请求，最好也返回 JSON 错误以便前端处理
-    // 为了兼容，我们这里还是返回 500 状态码
+    // 统一错误返回
     return new Response(userMsg, { status: 500 });
   }
 }

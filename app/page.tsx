@@ -24,7 +24,7 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
-// 价格配置 (保留逻辑，但前端不再展示)
+// --- 价格配置 (保留用于后端计算，前端不显示) ---
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
@@ -34,6 +34,7 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
+// --- 辅助组件 ---
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
   let Icon = Check;
@@ -51,8 +52,7 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ... Thinking, AuthPage 组件保持不变 ...
-// (为了篇幅，这里复用你之前的 Thinking 和 AuthPage 代码，它们没有需要修改的地方)
+// --- Thinking 思考过程组件 ---
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -78,6 +78,7 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
+// --- AuthPage 登录注册组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -174,7 +175,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器 (修复乱码问题) ---
+// --- ✨ 多媒体生成器组件 (核心修复：JSON解析 + 下载优化) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
@@ -208,21 +209,22 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         }),
       });
 
-      // ✅ 修复点：尝试解析 JSON。如果后端返回的是视频流（乱码），这里会报错进入 catch，不会显示乱码
-      // 但现在我们后端已经改为必定返回 JSON 了，所以这里会成功拿到 URL
+      // ✅ 核心修改：等待后端返回 JSON，而不是流式读取
+      if (!response.ok) {
+          throw new Error("生成服务请求失败");
+      }
+
       const data = await response.json();
       
-      if (response.ok && data.url) {
+      // ✅ 从 JSON 中提取 URL
+      if (data && data.url) {
           setResult(data.url);
       } else {
-          // 如果返回了错误信息
-          alert(`生成失败：${data.error || "未知错误"}`);
+          alert("未获取到结果链接，请重试。");
       }
 
     } catch (e: any) {
-      // 这里的错误通常是 JSON 解析失败（如果后端挂了）或者网络问题
-      console.error(e);
-      alert("生成请求出错，请检查网络或重试。");
+      alert(`生成出错：${e.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -279,7 +281,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                         >
                             <div className="font-bold text-sm">{m.name}</div>
                             <div className={`text-xs ${model === m.id ? 'text-blue-100' : 'text-slate-500'}`}>{m.desc}</div>
-                            {/* 🚫 价格已隐藏 */}
+                            {/* 价格标签已隐藏 */}
                         </button>
                     ))}
                 </div>
@@ -355,7 +357,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// 主页面 Home 组件 (保持不变，只是隐藏了 Sidebar 里的余额显示)
+// --- Home 组件主体 ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -456,7 +458,7 @@ export default function Home() {
     setIsLoading(true);
     const processedImages: string[] = []; const fileInfos: {name: string, type: string}[] = []; 
     if (attachments.length > 0) {
-      // (Simplified file logic)
+      // (保留文件处理逻辑)
     }
     
     let appendedText = text;
@@ -468,20 +470,12 @@ export default function Home() {
     try {
       const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: historyForAi, model: modelId, persona: roleId }), });
       
-      // ✅ 修复文字聊天的流式处理
-      if (response.headers.get("content-type")?.includes("application/json")) {
-          // 如果文字模型突然返回 JSON（通常是报错），这里可以捕获
-          const data = await response.json();
-          setMessages(prev => [...prev, { role: 'assistant', content: data.error || "请求失败" }]);
-      } else {
-          // 正常的流式文字回复
-          const reader = response.body?.getReader(); const decoder = new TextDecoder();
-          setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-          let fullResponseText = "";
-          while (true) { const { done, value } = await reader?.read()!; if (done) break; const chunk = decoder.decode(value); fullResponseText += chunk; setMessages(prev => { const newMsgs = [...prev]; const lastMsg = newMsgs[newMsgs.length - 1]; lastMsg.content += chunk; return newMsgs; }); }
-          const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
-          await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) }) }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
-      }
+      const reader = response.body?.getReader(); const decoder = new TextDecoder();
+      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+      let fullResponseText = "";
+      while (true) { const { done, value } = await reader?.read()!; if (done) break; const chunk = decoder.decode(value); fullResponseText += chunk; setMessages(prev => { const newMsgs = [...prev]; const lastMsg = newMsgs[newMsgs.length - 1]; lastMsg.content += chunk; return newMsgs; }); }
+      const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
+      await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) }) }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
     } catch (e) { alert("发送失败"); } finally { setIsLoading(false); }
   };
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
@@ -490,6 +484,7 @@ export default function Home() {
 
   const isWithin24Hours = (timeStr: string) => { try { const time = new Date(timeStr).getTime(); const now = new Date().getTime(); return (now - time) < 24 * 60 * 60 * 1000; } catch (e) { return false; } };
 
+  // --- 导航按钮配置 ---
   const NAV_ITEMS = [
     { id: 'home', label: '首页', icon: HomeIcon },
     { id: 'video', label: '视频', icon: Video },
@@ -512,7 +507,6 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* 隐藏了 Sidebar 底部显示余额的部分 */}
          <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">专业版用户</div></div></div></div>
       </div>
 
@@ -579,6 +573,57 @@ export default function Home() {
           </div>
           
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
+          <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}><DialogContent className="max-w-[800px] h-[85vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden bg-slate-100 dark:bg-slate-900"><div className="p-4 border-b bg-white dark:bg-slate-950 flex justify-between items-center shrink-0 shadow-sm z-10"><h3 className="font-bold flex items-center gap-2"><FileType size={18} className="text-blue-600"/> 文档预览</h3><Button size="sm" onClick={()=>handleDownloadWord(previewDocData || '')} className="h-8 bg-blue-600 hover:bg-blue-700 text-white border-none gap-2 shadow-sm"><Download size={14}/> 下载 Word</Button></div><div className="flex-1 overflow-y-auto p-8"><div className="min-h-full bg-white text-slate-900 shadow-lg p-12 max-w-[700px] mx-auto rounded-sm border border-slate-200"><div className="prose prose-sm max-w-none whitespace-pre-wrap font-serif leading-relaxed">{previewDocData}</div></div></div></DialogContent></Dialog>
+          <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}>
+            <DialogContent className="sm:max-w-4xl h-[600px] p-0 overflow-hidden border-none rounded-[24px] shadow-2xl bg-white dark:bg-slate-950 flex flex-row">
+                <div className="w-64 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col p-6">
+                    <div className="flex flex-col items-center mb-8">
+                        <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-3 shadow-lg">{user.nickname?.[0]}</div>
+                        <h2 className="font-black text-lg text-slate-800 dark:text-white">{user.nickname}</h2>
+                        <p className="text-xs text-slate-400 font-mono mt-1">{user.account}</p>
+                    </div>
+                    <nav className="flex-1 space-y-1">
+                        <button onClick={()=>setProfileTab('wallet')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='wallet' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Wallet size={16}/> 我的钱包</button>
+                        <button onClick={()=>setProfileTab('history')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='history' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><PieChart size={16}/> 消费明细</button>
+                        <div className="my-4 h-[1px] bg-slate-200 dark:bg-slate-800 mx-2"/>
+                        <div className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">生成记录 (24h)</div>
+                        <button onClick={()=>setProfileTab('sora')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='sora' ? 'bg-white dark:bg-slate-800 text-red-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Video size={16}/> Sora 视频</button>
+                        <button onClick={()=>setProfileTab('veo')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='veo' ? 'bg-white dark:bg-slate-800 text-green-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><Video size={16}/> Veo 视频</button>
+                        <button onClick={()=>setProfileTab('banana')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${profileTab==='banana' ? 'bg-white dark:bg-slate-800 text-yellow-500 shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}><ImageIcon size={16}/> Banana 绘图</button>
+                    </nav>
+                    <Button onClick={handleLogout} variant="ghost" className="mt-4 w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 gap-2 text-xs"><LogOut size={16}/> 退出登录</Button>
+                </div>
+                <div className="flex-1 p-8 overflow-y-auto bg-white dark:bg-slate-950">
+                    {/* 个人中心弹窗内容，隐藏了具体余额数字 */}
+                    {profileTab === 'wallet' && (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><Wallet/> 我的钱包</h3>
+                            <div className="p-6 rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-xl"><div className="text-xs opacity-70 mb-1 font-bold uppercase tracking-wider">当前状态</div><div className="text-3xl font-black font-mono tracking-tight">Pro 会员</div></div>
+                            <Button onClick={()=>{setIsProfileOpen(false); setTimeout(()=>setIsRechargeOpen(true),200)}} className="w-full h-12 rounded-xl font-bold bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700">卡密充值</Button>
+                        </div>
+                    )}
+                    {profileTab === 'history' && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2"><PieChart/> 消费明细</h3>
+                            <div className="space-y-2">{transactions.filter(t=>t.type==='consume').map((tx, i) => (<div key={i} className="flex justify-between items-center p-4 rounded-xl border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"><div className="flex flex-col gap-1"><span className="text-xs font-bold text-slate-700 dark:text-slate-300">{tx.description}</span><span className="text-[10px] text-slate-400 font-mono">{tx.time}</span></div></div>))}{transactions.filter(t=>t.type==='consume').length === 0 && <div className="text-center text-xs text-slate-400 py-10">暂无消费记录</div>}</div>
+                        </div>
+                    )}
+                    {['sora', 'veo', 'banana'].includes(profileTab) && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                            <h3 className="text-xl font-black text-slate-800 dark:text-white flex items-center gap-2">{profileTab==='sora' && <Video className="text-red-500"/>}{profileTab==='veo' && <Video className="text-green-500"/>}{profileTab==='banana' && <ImageIcon className="text-yellow-500"/>}{profileTab.charAt(0).toUpperCase() + profileTab.slice(1)} 生成记录</h3>
+                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-600 rounded-xl text-xs font-bold flex items-center gap-2"><Clock size={14}/> 仅显示最近 24 小时内的生成记录，过期自动销毁。</div>
+                            <div className="space-y-3">{transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).map((tx, i) => (<div key={i} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm"><div className="flex justify-between items-start mb-2"><span className="text-[10px] font-bold bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-slate-500">{tx.time}</span></div><div className="text-xs text-slate-700 dark:text-slate-300 line-clamp-2">{tx.description.replace(`使用 ${profileTab}-`, '').replace('v1', '').replace('google', '').replace('sdxl', '')}</div></div>))}{transactions.filter(t => t.type==='consume' && t.description.toLowerCase().includes(profileTab) && isWithin24Hours(t.time)).length === 0 && (<div className="text-center py-10"><div className="text-4xl mb-2 opacity-20">🗑️</div><div className="text-xs text-slate-400">暂无 24h 内的生成记录</div></div>)}</div>
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="sm:max-w-sm p-6"><h2 className="font-black text-xl mb-4">充值中心</h2><div className="space-y-4"><Input id="card-input" placeholder="请输入卡密 (XXXX-XXXX-XXXX)" className="h-12"/><Button onClick={redeemCard} className="w-full h-12 bg-blue-600 font-bold">立即兑换</Button></div></DialogContent></Dialog>
+          {user?.role === 'user' && !isSupportOpen && <button onClick={()=>setIsSupportOpen(true)} className="fixed right-6 bottom-24 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center z-50 hover:scale-110 transition-transform"><MessageCircle size={24}/></button>}
+          {isSupportOpen && (<div className="fixed right-6 bottom-24 z-50 w-80 h-96 bg-white dark:bg-slate-900 shadow-2xl rounded-2xl flex flex-col overflow-hidden border dark:border-slate-800"><div className="p-3 bg-blue-600 text-white flex justify-between items-center"><span className="font-bold text-xs">客服</span><button onClick={()=>setIsSupportOpen(false)}><X size={14}/></button></div><div className="flex-1 overflow-y-auto p-3 space-y-2">{supportMessages.map(m=><div key={m.id} className={`p-2 rounded-lg text-xs max-w-[80%] ${m.is_admin ? 'bg-slate-100 dark:bg-slate-800 self-start' : 'bg-blue-100 text-blue-800 self-end ml-auto'}`}>{m.content}</div>)}<div ref={supportScrollRef}/></div><div className="p-2 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} className="h-8 text-xs"/><Button size="icon" className="h-8 w-8" onClick={sendSupportMessage}><Send size={12}/></Button></div></div>)}
+          {user?.role === 'admin' && (<div className="fixed right-6 bottom-6 flex gap-2 z-50"><Button onClick={()=>{setIsAdminCardsOpen(true); fetchCards();}}>卡密管理</Button><Button onClick={()=>{setIsAdminSupportOpen(true); fetchSupportSessions();}}>客服后台</Button></div>)}
+          <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className={`sm:max-w-2xl p-0 overflow-hidden border-none rounded-[32px] shadow-2xl ${isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'}`}><DialogHeader className={`p-6 border-b flex justify-between items-center pr-12 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><DialogTitle className="text-xl font-black flex items-center gap-2"><CreditCard size={18} className="text-blue-500"/> 卡密管理</DialogTitle><Button size="icon" variant="ghost" onClick={fetchCards}><RefreshCw size={14}/></Button></DialogHeader><div className="p-6 space-y-6"><div className={`p-4 rounded-2xl border flex flex-wrap gap-2 md:gap-4 items-end ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">面额</label><Input type="number" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">数量</label><Input type="number" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><div className="space-y-1"><label className="text-[9px] font-bold uppercase text-slate-400">天数</label><Input type="number" value={cardConfig.days} onChange={e=>setCardConfig({...cardConfig, days: Number(e.target.value)})} className="h-8 w-20 text-xs bg-transparent border-slate-300/20"/></div><Button onClick={generateCards} className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs"><Plus size={12} className="mr-1"/> 生成</Button></div><div className="max-h-[400px] overflow-y-auto space-y-2 pr-1"><div className="grid grid-cols-2 md:grid-cols-5 text-[10px] font-black text-slate-400 uppercase tracking-widest px-2"><span>卡密</span><span>面额</span><span className="hidden md:block">状态</span><span className="hidden md:block">有效期</span><span className="hidden md:block">使用者</span></div>{cards.map((c:any)=>(<div key={c.id} className={`grid grid-cols-2 md:grid-cols-5 items-center p-3 rounded-xl border text-[10px] font-mono ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-100'}`}><div className="truncate pr-2 cursor-pointer hover:text-blue-500" onClick={()=>{navigator.clipboard.writeText(c.code); alert("复制成功");}}>{c.code}</div><div className="flex items-center gap-2"><span>${c.amount}</span><span className={`md:hidden px-1.5 py-0.5 rounded ${c.status==='used'?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500'}`}>{c.status==='used'?'已用':'正常'}</span></div><div className={`hidden md:block ${c.status==='used'?'text-red-500':'text-green-500'}`}>{c.status==='used'?'已用':'正常'}</div><div className="hidden md:block">{c.expires_at}</div><div className="hidden md:block">{c.used_by || '-'}</div></div>))}{cards.length === 0 && <div className="text-center text-[10px] opacity-40 py-10">暂无卡密，请点击右上角刷新</div>}</div></div></DialogContent></Dialog>
       </div>
     </div>
   );
