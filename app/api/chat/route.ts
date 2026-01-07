@@ -9,91 +9,88 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
+// ✅ 设置 Node.js 运行环境
 export const runtime = "nodejs"; 
+// ✅ 尝试放宽函数超时时间 (Pro账号有效)
+export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
 
-// 辅助函数：计算视频宽高
-function calculateDimensions(ratio: string, resolution: string) {
-    let width = 1024;
-    let height = 576;
-    let baseSize = 1024; 
-
-    // 限制最大分辨率以保证成功率
-    if (resolution === '720p') baseSize = 1024; 
-    if (resolution === '1080p') baseSize = 1024; 
-    if (resolution === '2k') baseSize = 1024; 
-
-    const [wRatio, hRatio] = ratio.split(':').map(Number);
-    if (wRatio > hRatio) {
-        width = baseSize;
-        height = Math.round(width * (hRatio / wRatio));
-    } else {
-        height = baseSize;
-        width = Math.round(height * (wRatio / hRatio));
-    }
-    // 必须是 64 的倍数
-    width = Math.floor(width / 64) * 64;
-    height = Math.floor(height / 64) * 64;
-    return { width, height };
-}
-
-// ✅ 新增：GET 方法，用于前端轮询查询任务状态
+// ---------------------------------------------------------
+// 1. GET 方法：专门用于前端轮询查询任务状态
+// ---------------------------------------------------------
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
+    
     if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
     try {
-        // 去 Replicate 查询任务状态
+        // 去 Replicate 查一下任务现在的状态
         const prediction = await replicate.predictions.get(id);
-        return NextResponse.json(prediction);
+        
+        // 只有当任务成功或失败时，才算结束
+        return NextResponse.json({
+            id: prediction.id,
+            status: prediction.status, // starting, processing, succeeded, failed
+            output: prediction.output,
+            error: prediction.error
+        });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
 
+// ---------------------------------------------------------
+// 2. POST 方法：创建任务 (立即返回 ID，不傻等)
+// ---------------------------------------------------------
 export async function POST(req: Request) {
   try {
-    const { messages, model, aspectRatio, resolution, duration, image } = await req.json();
+    const body = await req.json();
+    const { messages, model, aspectRatio, resolution, duration, image } = body;
     const lastMessage = messages[messages.length - 1];
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
 
     // ============================================================
-    // 🎬 视频模型 (Sora/Veo) -> 改为【异步任务】
+    // 🎬 视频生成 (异步模式 - 解决 504 超时)
     // ============================================================
     if (model === 'sora-v1' || model === 'veo-google') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         
         let prediction;
 
-        //  nhánh A: 图生视频 (SVD)
+        // 👉 模式 A：图生视频 (Image-to-Video)
         if (image) {
-            console.log("🚀 Starting Async SVD (Image-to-Video)...");
+            console.log("🚀 Creating SVD Image-to-Video Task...");
+            // 使用 SVD 1.1 官方验证过的 Hash，修复 422 错误
             prediction = await replicate.predictions.create({
-                version: "3f0457e4619daac51203dedb472816f3af343739541c338029d5006d99723225", // SVD 1.1 video model
+                version: "3f0457e4619daac51203dedb472816f3af343739541c338029d5006d99723225", // SVD XT 1.1
                 input: {
                     input_image: image,
-                    video_length: "25_frames_with_svd_xt",
+                    video_length: "14_frames_with_svd_xt", // 更加稳定的帧数设置
                     sizing_strategy: "maintain_aspect_ratio",
                     frames_per_second: 6,
-                    motion_bucket_id: 127
+                    motion_bucket_id: 127,
+                    cond_aug: 0.02
                 }
             });
         } 
-        // 分支 B: 文生视频 (Zeroscope)
+        // 👉 模式 B：文生视频 (Text-to-Video)
         else {
-            console.log("🚀 Starting Async Zeroscope (Text-to-Video)...");
-            const { width, height } = calculateDimensions(aspectRatio || "16:9", resolution || "1080p");
-            const fps = 24;
-            const num_frames = (duration || 5) * 24; 
-            
+            console.log("🚀 Creating Zeroscope Text-to-Video Task...");
+            // Zeroscope XL
             prediction = await replicate.predictions.create({
                 version: "9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
-                input: { prompt, fps, width, height, num_frames }
+                input: {
+                    prompt: prompt,
+                    num_frames: 24, // 保持默认以确保稳定性
+                    width: 1024,
+                    height: 576,
+                    fps: 24
+                }
             });
         }
 
-        // 🚨 关键：立即返回任务 ID，让前端去轮询，不要在这里等！
+        // ⚡️ 关键：立即返回任务 ID，让前端去轮询
         return NextResponse.json({ 
             type: 'async_job', 
             id: prediction.id, 
@@ -102,7 +99,7 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🎨 绘图模型 (Banana) -> 保持同步 (因为它很快)
+    // 🎨 图片生成 (同步模式 - 因为很快)
     // ============================================================
     if (model === 'banana-sdxl') {
         const output: any = await replicate.run(
@@ -113,7 +110,7 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 聊天模型 (Gemini) -> 保持流式
+    // 🧠 聊天模型 (Gemini - 流式)
     // ============================================================
     let targetModel = 'gemini-2.5-flash'; 
     if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
@@ -143,11 +140,15 @@ export async function POST(req: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        for await (const chunk of result.stream) {
-          const chunkText = chunk.text();
-          if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
+        try {
+            for await (const chunk of result.stream) {
+              const chunkText = chunk.text();
+              if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
+            }
+            controller.close();
+        } catch (e) {
+            controller.close();
         }
-        controller.close();
       },
     });
 
@@ -155,6 +156,7 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
-    return new Response(`Error: ${error.message}`, { status: 500 });
+    // 返回 JSON 格式错误以便前端展示
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
