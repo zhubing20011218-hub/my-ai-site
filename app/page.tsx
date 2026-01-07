@@ -11,7 +11,7 @@ import {
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
-  Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone
+  Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -35,19 +35,24 @@ const MODEL_PRICING: Record<string, number> = {
 };
 
 // --- 辅助组件 ---
-const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success', show: boolean }) => {
+const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
+  let Icon = Check;
+  let textColor = "text-green-400";
+  if (type === 'loading') { Icon = Loader2; textColor = "text-blue-400"; }
+  if (type === 'error') { Icon = X; textColor = "text-red-400"; }
+
   return (
     <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700">
-        {type === 'loading' ? <Loader2 size={18} className="animate-spin text-blue-400" /> : <Check size={18} className="text-green-400" />}
+        <Icon size={18} className={type === 'loading' ? "animate-spin " + textColor : textColor} />
         <span className="text-xs font-bold">{message}</span>
       </div>
     </div>
   );
 };
 
-// ... Thinking 组件 ...
+// ... Thinking 组件 (保持不变) ...
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -73,7 +78,7 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
-// ... AuthPage 组件 ...
+// ... AuthPage 组件 (保持不变) ...
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -170,19 +175,25 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器组件 (视频/图片) ---
-function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean> }) {
+// --- ✨ 多媒体生成器组件 (视频/图片) - 已增强下载功能 ---
+function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const availableModels = ALL_MODELS.filter(m => m.category === type);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     const cost = MODEL_PRICING[model] || 0.5;
-    // ✅ 这里的 onConsume 现在只需要传 (金额, 描述)
+    
+    // 视频生成前给予提示
+    if (type === 'video') {
+        if(!confirm(`生成高清视频需要约 1-3 分钟，消耗 $${cost}。请勿刷新页面，确认继续？`)) return;
+    }
+
     const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);
     if (!success) return;
 
@@ -209,16 +220,66 @@ function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsum
         fullText += decoder.decode(value);
       }
 
-      const urlMatch = fullText.match(/\((https?:\/\/.*?)\)/);
+      // 提取 URL：对于图片是 Markdown 图片格式，对于视频现在是纯 URL
+      let urlMatch;
+      if (type === 'image') {
+          urlMatch = fullText.match(/\((https?:\/\/.*?)\)/);
+      } else {
+          // 视频直接返回URL，简单验证是否是链接
+          if (fullText.startsWith('http')) {
+              urlMatch = [fullText, fullText];
+          }
+      }
+
       if (urlMatch && urlMatch[1]) {
         setResult(urlMatch[1]);
       } else {
-        alert("生成失败，未获取到结果链接");
+        // 如果返回的不是URL，很可能是报错信息
+        alert(`生成失败：\n${fullText.replace(/❌|\*\*|\[.*?\]/g, '').trim()}`);
       }
-    } catch (e) {
-      alert("生成出错，请重试");
+    } catch (e: any) {
+      alert(`生成出错：${e.message}`);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // 🔥 核心功能：强制无损下载源文件
+  const handleForceDownload = async () => {
+    if (!result || isDownloading) return;
+    setIsDownloading(true);
+    showToast('loading', '正在请求原始文件，请稍候...');
+    
+    try {
+        // 1. 请求原始文件
+        const response = await fetch(result);
+        if (!response.ok) throw new Error("文件获取失败");
+        
+        // 2. 转为 Blob 对象 (原始数据)
+        const blob = await response.blob();
+        
+        // 3. 创建临时下载链接
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        
+        // 4. 设置文件名
+        const ext = type === 'video' ? 'mp4' : 'png';
+        const timestamp = new Date().getTime();
+        a.download = `eureka_${type}_${timestamp}.${ext}`;
+        
+        // 5. 触发下载并清理
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(blobUrl);
+        document.body.removeChild(a);
+        
+        showToast('success', '已触发浏览器下载');
+    } catch (e) {
+        showToast('error', '下载失败，尝试在新窗口打开');
+        window.open(result, '_blank');
+    } finally {
+        setIsDownloading(false);
     }
   };
 
@@ -254,22 +315,21 @@ function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsum
 
              <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-slate-400">提示词 (Prompt)</label>
-                {/* 使用原生 textarea，无兼容性问题 */}
                 <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={type === 'video' ? "一只在未来城市上空飞行的无人机..." : "赛博朋克风格的街道，霓虹灯..."}
+                    placeholder={type === 'video' ? "一只在未来城市上空飞行的无人机，4k高清，电影感..." : "赛博朋克风格的街道，霓虹灯，雨夜..."}
                     className="flex min-h-[120px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:text-slate-200 resize-none"
                 />
-             </div>
+            </div>
 
              <Button 
                 onClick={handleGenerate} 
                 disabled={isGenerating || !prompt.trim()}
-                className="w-full h-12 text-base font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20"
+                className={`w-full h-12 text-base font-bold text-white shadow-lg transition-all ${isGenerating ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
              >
                 {isGenerating ? <Loader2 className="animate-spin mr-2"/> : (type === 'video' ? <Video size={18} className="mr-2"/> : <ImageIcon size={18} className="mr-2"/>)}
-                {isGenerating ? "正在生成中..." : "开始生成"}
+                {isGenerating ? (type==='video'?"正在渲染视频 (约1-3分钟)...":"正在绘图...") : "开始生成"}
              </Button>
           </div>
        </div>
@@ -279,13 +339,20 @@ function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsum
           <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
              <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Output Preview</div>
              {result && (
-                <Button size="sm" variant="ghost" className="h-6 text-xs text-slate-400 hover:text-white" onClick={() => window.open(result, '_blank')}>
-                    <Download size={12} className="mr-1"/> 下载
-                </Button>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-slate-400 hover:text-white gap-1" onClick={() => window.open(result, '_blank')}>
+                        <ExternalLink size={14}/> 新窗口打开
+                    </Button>
+                    {/* ✅ 强力下载按钮 */}
+                    <Button size="sm" onClick={handleForceDownload} disabled={isDownloading} className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1 shadow-sm font-bold">
+                        {isDownloading ? <Loader2 size={14} className="animate-spin"/> : <Download size={14}/>}
+                        下载原文件
+                    </Button>
+                </div>
              )}
           </div>
           
-          <div className="flex-1 flex items-center justify-center p-6 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 relative">
+          <div className="flex-1 flex items-center justify-center p-6 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 relative min-h-[400px]">
              {!result && !isGenerating && (
                 <div className="text-center opacity-30">
                     <div className="mb-4 flex justify-center">{type === 'video' ? <Video size={48}/> : <ImageIcon size={48}/>}</div>
@@ -297,17 +364,18 @@ function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsum
              {isGenerating && (
                 <div className="text-center animate-pulse">
                     <Loader2 size={48} className="animate-spin text-blue-500 mx-auto mb-4"/>
-                    <p className="text-sm text-blue-400 font-bold">AI 正在全力渲染...</p>
-                    <p className="text-xs text-slate-500 mt-2">预计耗时 1-2 分钟</p>
+                    <p className="text-base text-blue-400 font-black mb-2">AI 正在全力渲染中...</p>
+                    <p className="text-xs text-slate-500 font-mono">这可能需要几分钟时间，请耐心等待，不要关闭页面。</p>
+                    {type==='video' && <div className="mt-4 px-4 py-2 bg-blue-500/10 text-blue-300 text-xs rounded-full inline-flex items-center gap-2"><Clock size={12}/> 预计耗时: 1-3 分钟</div>}
                 </div>
              )}
 
              {result && !isGenerating && (
-                <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500">
+                <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
                     {type === 'video' ? (
-                        <video controls src={result} className="max-w-full max-h-full rounded-lg shadow-2xl border border-white/10" autoPlay loop />
+                        <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
                     ) : (
-                        <img src={result} alt="Generated" className="max-w-full max-h-full rounded-lg shadow-2xl border border-white/10 object-contain" />
+                        <img src={result} alt="Generated" className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10 object-contain" />
                     )}
                 </div>
              )}
@@ -317,7 +385,7 @@ function MediaGenerator({ type, onConsume }: { type: 'video' | 'image', onConsum
   );
 }
 
-// --- 主页面组件 ---
+// --- 主页面组件 (保持不变) ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home'); // Tab 状态
@@ -340,7 +408,7 @@ export default function Home() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewDocData, setPreviewDocData] = useState<string | null>(null);
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
-  const [toastState, setToastState] = useState<{show: boolean, type: 'loading'|'success', msg: string}>({ show: false, type: 'loading', msg: '' });
+  const [toastState, setToastState] = useState<{show: boolean, type: 'loading'|'success'|'error', msg: string}>({ show: false, type: 'loading', msg: '' });
 
   // Admin states
   const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
@@ -385,7 +453,7 @@ export default function Home() {
     if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
-  const showToast = (type: 'loading' | 'success', msg: string) => { setToastState({ show: true, type, msg }); setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000); };
+  const showToast = (type: 'loading' | 'success' | 'error', msg: string) => { setToastState({ show: true, type, msg }); setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000); };
   const handleDownloadExcel = (csvData: string) => { showToast('loading', '正在生成 Excel...'); setTimeout(() => { try { const wb = XLSX.read(csvData, { type: 'string' }); XLSX.writeFile(wb, `eureka_data_${new Date().getTime()}.xlsx`); showToast('success', 'Excel 下载已开始'); } catch (e) { showToast('loading', '下载失败，请重试'); } }, 1500); };
   const handleDownloadWord = (text: string) => { showToast('loading', '正在生成 Word 文档...'); setTimeout(() => { try { const doc = new Document({ sections: [{ properties: {}, children: text.split('\n').map(line => new Paragraph({ children: [new TextRun(line)], spacing: { after: 200 } })), }], }); Packer.toBlob(doc).then(blob => { saveAs(blob, `eureka_doc_${new Date().getTime()}.docx`); showToast('success', 'Word 下载已开始'); }); } catch (e) { showToast('loading', '下载失败'); } }, 1500); };
   const handlePreviewDoc = (text: string) => { showToast('loading', '正在渲染文档...'); setTimeout(() => { setPreviewDocData(text); setIsDocPreviewOpen(true); showToast('success', '渲染完成'); }, 800); };
@@ -524,14 +592,14 @@ export default function Home() {
               {/* 🎬 视频页 - ✅ 已修复 onConsume 类型不匹配问题 */}
               {activeTab === 'video' && (
                  <div className="h-full overflow-y-auto">
-                    <MediaGenerator type="video" onConsume={(amount, desc) => handleTX('consume', amount, desc)} />
+                    <MediaGenerator type="video" onConsume={(amount, desc) => handleTX('consume', amount, desc)} showToast={showToast} />
                  </div>
               )}
 
               {/* 🖼️ 图片页 - ✅ 已修复 onConsume 类型不匹配问题 */}
               {activeTab === 'image' && (
                  <div className="h-full overflow-y-auto">
-                    <MediaGenerator type="image" onConsume={(amount, desc) => handleTX('consume', amount, desc)} />
+                    <MediaGenerator type="image" onConsume={(amount, desc) => handleTX('consume', amount, desc)} showToast={showToast} />
                  </div>
               )}
 

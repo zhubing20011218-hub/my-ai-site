@@ -10,30 +10,37 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
-// ✅ Vercel Pro 专属配置
+// ✅ Vercel Pro 特权设置
 export const runtime = "edge"; 
-// 🚀【核心修改】将超时限制强制设为 300秒 (5分钟)
+// 🚀 关键：强制声明需要 300秒 (5分钟) 执行时间
 export const maxDuration = 300; 
 
 export async function POST(req: Request) {
+  const startTime = Date.now(); // ⏱️ 开始计时
+  console.log(`[API Start] Request received at ${new Date().toISOString()}`);
+
   try {
     const { messages, model, persona } = await req.json();
     const lastMessage = messages[messages.length - 1];
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
 
-    console.log(`[API Request] Model: ${model}`);
+    console.log(`[API Processing] Model: ${model}`);
 
     // ============================================================
     // 🎨 分支 1：绘图模型 (Banana SDXL)
     // ============================================================
     if (model === 'banana-sdxl') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
-        // 高质量绘图参数
+        
         const output: any = await replicate.run(
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
           { input: { prompt: prompt, width: 1024, height: 1024, refine: "expert_ensemble_refiner" } }
         );
-        return new Response(`![Generated Image](${output[0]})\n\n✅ **绘图完成！**\n*消耗: $0.20*`);
+        
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`[API Image Done] Finished in ${duration.toFixed(2)}s`);
+        
+        return new Response(`![Generated Image](${output[0]})\n\n✅ **绘图完成！**\n*耗时: ${duration.toFixed(2)}秒 | 消耗: $0.20*`);
     }
 
     // ============================================================
@@ -42,23 +49,28 @@ export async function POST(req: Request) {
     if (model === 'sora-v1' || model === 'veo-google') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         
-        // 🚀 恢复 1024x576 高清分辨率
-        // Pro 账号有 300秒时间，足够跑完这些参数，无需担心超时
+        console.log(`[API Video Start] Sending request to Replicate... (Expect long wait)`);
+        
+        // 🚀 使用高清分辨率。Pro 账号 300s 足够跑完。
         const videoOutput: any = await replicate.run(
           "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
           { 
             input: { 
               prompt: prompt, 
               fps: 24, 
-              width: 1024,   // ✅ 恢复高清宽屏
-              height: 576,   // ✅ 恢复高清宽屏
-              num_frames: 24 // 24帧
+              width: 1024,   // ✅ 高清
+              height: 576,   // ✅ 高清
+              num_frames: 24 
             } 
           }
         );
         
+        const duration = (Date.now() - startTime) / 1000;
+        console.log(`[API Video Done] Finished in ${duration.toFixed(2)}s. URL: ${videoOutput[0]}`);
+        
         const videoUrl = videoOutput[0];
-        return new Response(`[视频生成完毕](${videoUrl})\n\n<video controls src="${videoUrl}" width="100%" style="border-radius: 12px; margin-top: 10px;"></video>\n\n✅ **视频生成成功！**\n*消耗: $2.50*`);
+        // 这里只返回纯 URL，方便前端处理下载
+        return new Response(videoUrl);
     }
 
     // ============================================================
@@ -121,6 +133,7 @@ export async function POST(req: Request) {
               if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
             }
             controller.close();
+            console.log(`[API Text Done] Stream finished.`);
         } catch (e) {
             console.error("Stream error:", e);
             controller.close();
@@ -131,11 +144,20 @@ export async function POST(req: Request) {
     return new Response(stream);
 
   } catch (error: any) {
-    console.error("Chat Route Error:", error);
+    // ✅ 修复点：这里不使用 toFixed，保持 duration 为数字类型，以便下面做比较
+    const duration = (Date.now() - startTime) / 1000;
+    
+    console.error(`[API ERROR] Occurred after ${duration.toFixed(2)}s. Details:`, error);
+    
     let userMsg = "服务暂时繁忙，请稍后再试。";
     if (error.toString().includes("402")) userMsg = "Replicate 余额不足，请充值。";
     if (error.toString().includes("429")) userMsg = "该模型调用过于频繁，请稍后再试。"; 
     
-    return new Response(`❌ **请求失败**\n\n${userMsg}\n\n*Debug info: ${error.message}*`);
+    // 这里的比较就不会报错了，因为 duration 是数字
+    if (duration > 55 && duration < 65) {
+         userMsg = "视频生成超时 (Vercel免费版限制)。请确保您已升级Pro并重新部署。";
+    }
+    
+    return new Response(`❌ **请求失败**\n\n${userMsg}\n\n*耗时: ${duration.toFixed(2)}秒*`);
   }
 }
