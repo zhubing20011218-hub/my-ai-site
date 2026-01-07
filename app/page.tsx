@@ -5,19 +5,22 @@ import { Button } from "@/components/ui/button"
 import ChatInput, { ALL_MODELS } from "@/components/ChatInput" 
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { 
-  History, Shield, Terminal, Check, User, Loader2, Send, 
+  History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, CreditCard, Plus, MessageCircle, Server, Trash2,
+  Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
   Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
-  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Headphones, Ticket, CreditCard as CardIcon
+  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Clapperboard, Sparkle,
+  Headphones, Ticket, CreditCard as CardIcon
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx';
+import mammoth from 'mammoth';
 const { saveAs } = require('file-saver');
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 // --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
@@ -90,8 +93,10 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [verifyCode, setVerifyCode] = useState("");
     const [count, setCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [codeLoading, setCodeLoading] = useState(false);
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+    const [agreed, setAgreed] = useState(false);
     const [error, setError] = useState("");
 
     const validateAccount = (val: string) => {
@@ -145,7 +150,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ MediaGenerator (Minimax Video-01 重构版) ---
+// --- ✨ MediaGenerator (Minimax) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [prompt, setPrompt] = useState("");
   const [optPrompt, setOptPrompt] = useState(true); 
@@ -153,7 +158,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const [result, setResult] = useState<string | null>(null);
   const [refImage, setRefImage] = useState<string | null>(null);
 
-  // 强力压缩：512px, 0.6质量 (防止 413)
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -209,14 +213,9 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         }),
       });
 
-      // 增加 JSON 解析保护
       const text = await response.text();
       let data;
-      try {
-          data = JSON.parse(text);
-      } catch (e) {
-          throw new Error("服务器响应异常: " + text.slice(0,50));
-      }
+      try { data = JSON.parse(text); } catch (e) { throw new Error("服务器响应超时或格式错误"); }
 
       if (!response.ok) throw new Error(data.error || "请求失败");
 
@@ -244,7 +243,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
        <div className="w-full md:w-1/3 flex flex-col gap-6 overflow-y-auto pr-2">
           <div>
             <h2 className="text-2xl font-black flex items-center gap-2">
-                {type === 'video' ? <Film className="text-blue-500"/> : <ImageIcon className="text-yellow-500"/>}
+                {type === 'video' ? <Clapperboard className="text-blue-500"/> : <ImageIcon className="text-yellow-500"/>}
                 AI {type === 'video' ? 'Video' : 'Art'} Studio
             </h2>
             <p className="text-xs text-slate-400 font-mono tracking-tighter uppercase">Minimax-01 Sora-Grade Model</p>
@@ -412,7 +411,7 @@ export default function Home() {
   const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) {} };
   const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
   
-  // ✅ 修复：redeemCard 语法重写 (Line 360)
+  // ✅ 修复：redeemCard 语法重写 (解决 Line 360 报错)
   const redeemCard = async () => { 
       const codeInput = document.getElementById('card-input') as HTMLInputElement;
       const code = codeInput?.value; 
@@ -439,8 +438,8 @@ export default function Home() {
 
   const handleDownloadExcel = (csv: string) => { const wb = XLSX.read(csv, { type: 'string' }); XLSX.writeFile(wb, `eureka_${Date.now()}.xlsx`); };
 
-  // ✅ 修复：提取渲染逻辑 (解决 Line 484 JSX 嵌套报错)
-  const renderContent = () => {
+  // ✅ 渲染逻辑分离：彻底解决 Line 484-500 JSX 闭合报错
+  const renderMainContent = () => {
       switch (activeTab) {
           case 'home':
               return (
@@ -515,11 +514,10 @@ export default function Home() {
           </header>
           
           <main className="flex-1 overflow-hidden relative">
-              {renderContent()}
+              {renderMainContent()}
           </main>
       </div>
 
-      {/* 弹窗系统 (全量恢复) */}
       <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="max-w-md rounded-[32px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-950"><div className="p-8 space-y-6"><div className="flex items-center gap-4"><div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black shadow-lg">{user.nickname?.[0]}</div><div><h3 className="text-xl font-black">{user.nickname}</h3><p className="text-xs text-slate-400 font-mono">ID: {user.id.slice(-8)}</p></div></div><div className="grid grid-cols-2 gap-3"><div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 text-center"><span className="text-[10px] font-black text-blue-600 uppercase block mb-1">Balance</span><span className="text-2xl font-black text-blue-700 dark:text-blue-400">${user.balance}</span></div><div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 text-center"><span className="text-[10px] font-black text-slate-400 uppercase block mb-1">Status</span><span className="text-xs font-bold text-green-500 flex items-center justify-center gap-1 uppercase tracking-tighter"><Shield size={10}/> Pro Active</span></div></div><div className="space-y-2"><Button onClick={()=>{setIsProfileOpen(false); setIsRechargeOpen(true);}} className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-xl shadow-xl transition-all">立即充值额度</Button>{user.role === 'admin' && <Button onClick={()=>{setIsProfileOpen(false); setIsAdminCardsOpen(true);}} variant="outline" className="w-full h-12 rounded-xl border-slate-200 font-bold">进入管理中心</Button>}<Button variant="ghost" onClick={()=>{localStorage.removeItem("my_ai_user"); window.location.reload();}} className="w-full text-red-500 font-bold hover:bg-red-50">退出当前账号</Button></div></div></DialogContent></Dialog>
       <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="max-w-sm rounded-3xl p-6"><h3 className="text-lg font-black mb-4 flex items-center gap-2"><Ticket/> 兑换卡密</h3><Input id="card-input" placeholder="请输入卡密代码" className="mb-4"/><Button onClick={redeemCard} className="w-full">立即兑换</Button></DialogContent></Dialog>
       <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className="max-w-2xl rounded-3xl p-6 h-[80vh] flex flex-col"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black flex items-center gap-2"><CardIcon/> 卡密管理</h3><Button onClick={fetchCards} variant="outline" size="sm">刷新列表</Button></div><div className="grid grid-cols-3 gap-2 mb-6"><Input type="number" placeholder="金额" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})}/><Input type="number" placeholder="数量" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})}/><Button onClick={generateCards}>生成</Button></div><div className="flex-1 overflow-auto bg-slate-50 rounded-xl p-2 space-y-2">{cards.map((c:any)=>(<div key={c.id} className="flex justify-between p-3 bg-white rounded-lg text-xs shadow-sm"><span className="font-mono">{c.code}</span><span className="font-bold text-green-600">${c.amount}</span><span className={c.isUsed?'text-red-500':'text-green-500'}>{c.isUsed?'已使用':'未使用'}</span></div>))}</div></DialogContent></Dialog>
