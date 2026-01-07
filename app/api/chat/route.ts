@@ -9,17 +9,47 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
-// ✅ 保持 Node.js 环境 + 300秒超时 (Pro 专属)
+// ✅ 保持 Node.js 环境 + 300秒超时
 export const runtime = "nodejs"; 
 export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
+
+// 🧮 辅助函数：根据比例和清晰度计算宽高
+function calculateDimensions(ratio: string, resolution: string) {
+    let width = 1024;
+    let height = 576;
+    let baseSize = 1024; // 默认基准
+
+    // 设置基准大小 (以长边为准)
+    if (resolution === '720p') baseSize = 1280;
+    if (resolution === '1080p') baseSize = 1920;
+    if (resolution === '2k') baseSize = 2560;
+    if (resolution === '4k') baseSize = 3840; // 注意：4k生成非常慢
+
+    const [wRatio, hRatio] = ratio.split(':').map(Number);
+    
+    if (wRatio > hRatio) {
+        width = baseSize;
+        height = Math.round(width * (hRatio / wRatio));
+    } else {
+        height = baseSize;
+        width = Math.round(height * (wRatio / hRatio));
+    }
+
+    // 确保是 64 的倍数 (视频模型要求)
+    width = Math.floor(width / 64) * 64;
+    height = Math.floor(height / 64) * 64;
+
+    return { width, height };
+}
 
 export async function POST(req: Request) {
   const startTime = Date.now(); 
   console.log(`[API Start] Request received`);
 
   try {
-    const { messages, model, persona } = await req.json();
+    // 📥 接收所有高级参数
+    const { messages, model, aspectRatio, resolution, duration, image } = await req.json();
     const lastMessage = messages[messages.length - 1];
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
 
@@ -32,7 +62,6 @@ export async function POST(req: Request) {
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
           { input: { prompt: prompt, width: 1024, height: 1024, refine: "expert_ensemble_refiner" } }
         );
-        // 图片继续使用 JSON 返回 URL，因为图片通常没有严重的跨域播放问题
         return NextResponse.json({ 
             type: 'image', 
             url: output[0], 
@@ -41,38 +70,65 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🎬 分支 2：视频模型 (关键修复：服务器代理下载)
+    // 🎬 分支 2：视频模型 (智能路由：图生视频 OR 文生视频)
     // ============================================================
     if (model === 'sora-v1' || model === 'veo-google') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         
-        console.log(`[API Video] Starting generation...`);
+        let videoOutput: any;
         
-        // 1. 调用 Replicate 生成视频 (高清参数)
-        const videoOutput: any = await replicate.run(
-          "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
-          { 
-            input: { 
-              prompt: prompt, 
-              fps: 24, 
-              width: 1024,   
-              height: 576,   
-              num_frames: 24 
-            } 
-          }
-        );
+        // 👉 情况 A：用户上传了图片 -> 使用图生视频模型 (SVD)
+        if (image) {
+            console.log(`[API Video] Mode: Image-to-Video (SVD)`);
+            // SVD 模型：stability-ai/stable-video-diffusion
+            videoOutput = await replicate.run(
+              "stability-ai/stable-video-diffusion:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+              {
+                input: {
+                  input_image: image, // Base64 图片
+                  video_length: "25_frames_with_svd_xt", // 默认长视频模式
+                  sizing_strategy: "maintain_aspect_ratio",
+                  frames_per_second: 6,
+                  motion_bucket_id: 127
+                }
+              }
+            );
+        } 
+        // 👉 情况 B：纯文字 -> 使用文生视频模型 (Zeroscope)
+        else {
+            console.log(`[API Video] Mode: Text-to-Video (Zeroscope)`);
+            
+            // 1. 计算参数
+            const { width, height } = calculateDimensions(aspectRatio || "16:9", resolution || "1080p");
+            const fps = 24;
+            const num_frames = (duration || 5) * fps; // 时长 * 帧率
+
+            console.log(`[API Video Params] ${width}x${height}, ${duration}s (${num_frames} frames)`);
+
+            // 2. 调用模型
+            videoOutput = await replicate.run(
+              "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
+              { 
+                input: { 
+                  prompt: prompt, 
+                  fps: fps, 
+                  width: width,   
+                  height: height,   
+                  num_frames: num_frames 
+                } 
+              }
+            );
+        }
         
-        const remoteUrl = videoOutput[0];
+        // 3. 处理结果 (通用)
+        // 注意：Replicate 有时返回的是数组，有时是字符串
+        const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
         console.log(`[API Video] Generated Remote URL: ${remoteUrl}`);
 
-        // 2. 关键步骤：服务器端下载视频流
-        // 不直接返回 URL，而是由 Vercel 去请求这个文件，然后透传给前端
-        // 这样可以解决所有跨域(CORS)和下载权限问题
+        // 4. 代理下载 (解决跨域和预览问题)
         const videoRes = await fetch(remoteUrl);
-        
         if (!videoRes.ok) throw new Error("Failed to fetch video stream from source");
 
-        // 3. 将视频流返回给前端，标记为 video/mp4
         return new Response(videoRes.body, {
             headers: {
                 'Content-Type': 'video/mp4',
@@ -143,7 +199,6 @@ export async function POST(req: Request) {
     if (error.toString().includes("402")) userMsg = "额度不足，请充值。";
     if (error.toString().includes("429")) userMsg = "调用太频繁，请稍后再试。"; 
     
-    // 如果发生错误，返回 JSON 格式的错误信息，方便前端识别
     return NextResponse.json({ error: userMsg, details: error.message }, { status: 500 });
   }
 }

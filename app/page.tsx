@@ -11,7 +11,8 @@ import {
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
-  Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink
+  Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
+  Settings2, Upload, Monitor, Smartphone, Square, Film
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -24,7 +25,7 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
-// --- 价格配置 (前端逻辑用，不显示) ---
+// --- 价格配置 (保留用于后端计算，前端不显示) ---
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
@@ -33,6 +34,34 @@ const MODEL_PRICING: Record<string, number> = {
   "veo-google": 1.80,
   "banana-sdxl": 0.20,
 };
+
+// --- 视频参数配置选项 ---
+const ASPECT_RATIOS = [
+    { label: "16:9", value: "16:9", icon: Monitor, desc: "横屏/YouTube" },
+    { label: "9:16", value: "9:16", icon: Smartphone, desc: "竖屏/TikTok" },
+    { label: "1:1", value: "1:1", icon: Square, desc: "正方形/Ins" },
+    { label: "4:3", value: "4:3", icon: Monitor, desc: "电视/通用" },
+    { label: "3:4", value: "3:4", icon: Smartphone, desc: "竖向通用" },
+    { label: "21:9", value: "21:9", icon: Film, desc: "电影宽幕" },
+    { label: "9:21", value: "9:21", icon: Smartphone, desc: "超长竖屏" },
+    { label: "2:3", value: "2:3", icon: ImageIcon, desc: "经典照片" },
+    { label: "3:2", value: "3:2", icon: ImageIcon, desc: "横向照片" },
+    { label: "2.35:1", value: "2.35:1", icon: Film, desc: "宽银幕" },
+];
+
+const RESOLUTIONS = [
+    { label: "720p (高清)", value: "720p" },
+    { label: "1080p (全高清)", value: "1080p" },
+    { label: "2K (超清)", value: "2k" },
+    { label: "4K (极清)", value: "4k" },
+];
+
+const DURATIONS = [
+    { label: "5秒 (快速)", value: 5 },
+    { label: "10秒 (标准)", value: 10 },
+    { label: "15秒 (加长)", value: 15 },
+    { label: "25秒 (超长)", value: 25 },
+];
 
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
@@ -173,23 +202,44 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器 (核心修复：Blob 处理) ---
+// --- ✨ 多媒体生成器 (Pro版：支持自定义时长/分辨率/图生视频) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  // 新增：区分结果类型，是URL还是BlobURL
   const [isBlobUrl, setIsBlobUrl] = useState(false);
+
+  // 视频高级参数
+  const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [resolution, setResolution] = useState("1080p");
+  const [duration, setDuration] = useState(5);
+  const [refImage, setRefImage] = useState<string | null>(null);
 
   const availableModels = ALL_MODELS.filter(m => m.category === type);
 
+  // 处理图片上传
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              setRefImage(reader.result as string);
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() && !refImage) {
+        alert("请输入提示词或上传参考图片");
+        return;
+    }
     const cost = MODEL_PRICING[model] || 0.5;
     
     if (type === 'video') {
-        if(!confirm(`生成高清视频需要约 1-3 分钟。请勿刷新页面，确认继续？`)) return;
+        const warning = refImage ? "图生视频模式" : "文生视频模式";
+        if(!confirm(`${warning}：生成 ${resolution} / ${duration}秒 的视频需要约 1-3 分钟。请勿刷新页面，确认继续？`)) return;
     }
 
     const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);
@@ -205,14 +255,17 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           messages: [{ role: 'user', content: prompt }], 
-          model: model 
+          model: model,
+          // 传递高级参数
+          aspectRatio,
+          resolution,
+          duration,
+          image: refImage // 如果有图，传给后端
         }),
       });
 
-      // 🔍 检查响应头
       const contentType = response.headers.get("content-type");
 
-      // 🎬 情况1：视频流 (video/mp4)
       if (contentType && contentType.includes("video/mp4")) {
           const blob = await response.blob();
           const blobUrl = window.URL.createObjectURL(blob);
@@ -220,17 +273,15 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           setIsBlobUrl(true);
           showToast('success', '视频生成并传输成功！');
       } 
-      // 🎨 情况2：图片或其他 JSON 数据
       else if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
           if (data.error) {
               alert(`生成失败：${data.error}`);
           } else if (data.url) {
               setResult(data.url);
-              setIsBlobUrl(false); // 这是远程 URL
+              setIsBlobUrl(false);
           }
       } else {
-          // 兜底：如果是文本流（意外情况），读出来看看
           const text = await response.text();
           alert(`未知响应：${text.slice(0, 100)}`);
       }
@@ -242,11 +293,8 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     }
   };
 
-  // 📥 强力下载：现在如果已经是 Blob URL，直接下载即可
   const handleForceDownload = async () => {
     if (!result) return;
-    
-    // 如果已经是 Blob URL (视频)，直接下载
     if (isBlobUrl) {
         const a = document.createElement('a');
         a.href = result;
@@ -257,8 +305,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         showToast('success', '已保存源文件');
         return;
     }
-
-    // 如果是远程 URL (图片)，还是走原来的 Fetch 流程
     try {
         showToast('loading', '正在请求原始文件...');
         const response = await fetch(result);
@@ -282,18 +328,19 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
   return (
     <div className="flex flex-col md:flex-row h-full gap-6 p-6 max-w-7xl mx-auto">
-       <div className="w-full md:w-1/3 flex flex-col gap-6">
+       <div className="w-full md:w-1/3 flex flex-col gap-6 overflow-y-auto pr-2">
           <div>
             <h2 className="text-2xl font-black mb-2 flex items-center gap-2">
                 {type === 'video' ? <Video className="text-blue-500"/> : <ImageIcon className="text-yellow-500"/>}
-                AI {type === 'video' ? 'Video' : 'Image'} API
+                AI {type === 'video' ? 'Video' : 'Image'} Studio
             </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">选择模型并输入提示词，即刻生成。</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">专业级 AI 创作控制台</p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
+             {/* 模型选择 */}
              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-slate-400">选择模型</label>
+                <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Settings2 size={12}/> 选择模型</label>
                 <div className="grid grid-cols-1 gap-2">
                     {availableModels.map(m => (
                         <button 
@@ -308,19 +355,78 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                 </div>
              </div>
 
+             {/* 仅在视频模式下显示高级设置 */}
+             {type === 'video' && (
+                 <>
+                    {/* 参考图上传 (图生视频) */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><ImageIcon size={12}/> 参考图 (可选 - 图生视频)</label>
+                        <div className="relative group">
+                            <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
+                            <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-all ${refImage ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-300 dark:border-slate-700 hover:border-blue-400'}`}>
+                                {refImage ? (
+                                    <div className="relative w-full h-32">
+                                        <img src={refImage} alt="Ref" className="w-full h-full object-cover rounded-lg"/>
+                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">点击更换</div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Upload size={24} className="text-slate-400 mb-2"/>
+                                        <span className="text-xs text-slate-500">点击上传图片</span>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 时长选择 */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Clock size={12}/> 视频时长</label>
+                        <div className="grid grid-cols-4 gap-2">
+                            {DURATIONS.map(d => (
+                                <button key={d.value} onClick={() => setDuration(d.value)} className={`py-2 rounded-lg text-[10px] font-bold border transition-all ${duration === d.value ? 'bg-blue-600 border-blue-600 text-white' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+                                    {d.value}s
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* 分辨率 */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Maximize2 size={12}/> 清晰度</label>
+                        <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            {RESOLUTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                    </div>
+
+                    {/* 画幅比 - 10种 */}
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><LayoutGrid size={12}/> 画幅比例</label>
+                        <div className="grid grid-cols-5 gap-2">
+                            {ASPECT_RATIOS.map(r => (
+                                <button key={r.value} onClick={() => setAspectRatio(r.value)} className={`flex flex-col items-center justify-center p-1.5 rounded-lg border transition-all ${aspectRatio === r.value ? 'bg-blue-600 border-blue-600 text-white' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                                    <r.icon size={14} className="mb-1"/>
+                                    <span className="text-[9px] font-bold">{r.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                 </>
+             )}
+
              <div className="space-y-2">
                 <label className="text-xs font-bold uppercase text-slate-400">提示词 (Prompt)</label>
                 <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={type === 'video' ? "一只在未来城市上空飞行的无人机，4k高清，电影感..." : "赛博朋克风格的街道，霓虹灯，雨夜..."}
-                    className="flex min-h-[120px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:text-slate-200 resize-none"
+                    placeholder={type === 'video' ? (refImage ? "描述如何让这张图片动起来，例如：镜头缓慢推进，烟雾缭绕..." : "一只在未来城市上空飞行的无人机，4k高清，电影感...") : "赛博朋克风格的街道，霓虹灯，雨夜..."}
+                    className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:text-slate-200 resize-none"
                 />
             </div>
 
              <Button 
                 onClick={handleGenerate} 
-                disabled={isGenerating || !prompt.trim()}
+                disabled={isGenerating || (!prompt.trim() && !refImage)}
                 className={`w-full h-12 text-base font-bold text-white shadow-lg transition-all ${isGenerating ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
              >
                 {isGenerating ? <Loader2 className="animate-spin mr-2"/> : (type === 'video' ? <Video size={18} className="mr-2"/> : <ImageIcon size={18} className="mr-2"/>)}
@@ -335,7 +441,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
              {result && (
                 <div className="flex gap-2">
                     <Button size="sm" onClick={handleForceDownload} className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1 shadow-sm font-bold">
-                        <Download size={14}/> 下载原文件
+                        <Download size={14}/> 下载源文件
                     </Button>
                 </div>
              )}
@@ -346,7 +452,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                 <div className="text-center opacity-30">
                     <div className="mb-4 flex justify-center">{type === 'video' ? <Video size={48}/> : <ImageIcon size={48}/>}</div>
                     <p className="text-sm">暂无生成内容</p>
-                    <p className="text-xs">请在左侧输入提示词并点击生成</p>
+                    <p className="text-xs">配置参数并点击生成</p>
                 </div>
              )}
              
@@ -374,8 +480,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// ... Home 组件主体保持不变 (上面已提供) ...
-// 确保最后的 export default function Home() ... 代码块存在
+// --- Home 组件主体 (保持不变) ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -524,7 +629,6 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* 隐藏了 Sidebar 底部显示余额的部分 */}
          <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">专业版用户</div></div></div></div>
       </div>
 
