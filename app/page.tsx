@@ -24,7 +24,7 @@ import { Document, Packer, Paragraph, TextRun } from "docx";
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
-// --- 价格配置 (后端计费保留，但前端展示已移除) ---
+// 价格配置 (保留逻辑，但前端不再展示)
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
@@ -34,7 +34,6 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// --- 辅助组件 ---
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
   let Icon = Check;
@@ -52,7 +51,8 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ... Thinking 组件 (保持不变) ...
+// ... Thinking, AuthPage 组件保持不变 ...
+// (为了篇幅，这里复用你之前的 Thinking 和 AuthPage 代码，它们没有需要修改的地方)
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -78,7 +78,6 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
-// ... AuthPage 组件 (保持不变) ...
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -175,7 +174,7 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器组件 (视频/图片) ---
+// --- ✨ 多媒体生成器 (修复乱码问题) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
@@ -187,7 +186,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    // 隐藏前端价格显示，但保留逻辑
     const cost = MODEL_PRICING[model] || 0.5;
     
     if (type === 'video') {
@@ -209,33 +207,22 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           model: model 
         }),
       });
+
+      // ✅ 修复点：尝试解析 JSON。如果后端返回的是视频流（乱码），这里会报错进入 catch，不会显示乱码
+      // 但现在我们后端已经改为必定返回 JSON 了，所以这里会成功拿到 URL
+      const data = await response.json();
       
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let fullText = "";
-      
-      while (true) {
-        const { done, value } = await reader?.read()!;
-        if (done) break;
-        fullText += decoder.decode(value);
+      if (response.ok && data.url) {
+          setResult(data.url);
+      } else {
+          // 如果返回了错误信息
+          alert(`生成失败：${data.error || "未知错误"}`);
       }
 
-      let urlMatch;
-      if (type === 'image') {
-          urlMatch = fullText.match(/\((https?:\/\/.*?)\)/);
-      } else {
-          if (fullText.startsWith('http')) {
-              urlMatch = [fullText, fullText];
-          }
-      }
-
-      if (urlMatch && urlMatch[1]) {
-        setResult(urlMatch[1]);
-      } else {
-        alert(`生成失败：\n${fullText.replace(/❌|\*\*|\[.*?\]/g, '').trim()}`);
-      }
     } catch (e: any) {
-      alert(`生成出错：${e.message}`);
+      // 这里的错误通常是 JSON 解析失败（如果后端挂了）或者网络问题
+      console.error(e);
+      alert("生成请求出错，请检查网络或重试。");
     } finally {
       setIsGenerating(false);
     }
@@ -292,7 +279,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                         >
                             <div className="font-bold text-sm">{m.name}</div>
                             <div className={`text-xs ${model === m.id ? 'text-blue-100' : 'text-slate-500'}`}>{m.desc}</div>
-                            {/* 移除了价格显示 div */}
+                            {/* 🚫 价格已隐藏 */}
                         </button>
                     ))}
                 </div>
@@ -368,10 +355,8 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// ... 主页面组件 Home (保持不变，只是隐藏了 Sidebar 里的余额显示) ...
-// 鉴于你要隐藏所有价格，我在 Home 组件里把余额显示也注释掉了。
+// 主页面 Home 组件 (保持不变，只是隐藏了 Sidebar 里的余额显示)
 export default function Home() {
-  // ... (省略前半部分状态和逻辑，与之前一致) ...
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -482,12 +467,21 @@ export default function Home() {
     const historyForAi = recentHistory.map(m => ({ role: m.role, content: { text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text), images: (m.content as any).images || [] } }));
     try {
       const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: historyForAi, model: modelId, persona: roleId }), });
-      const reader = response.body?.getReader(); const decoder = new TextDecoder();
-      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-      let fullResponseText = "";
-      while (true) { const { done, value } = await reader?.read()!; if (done) break; const chunk = decoder.decode(value); fullResponseText += chunk; setMessages(prev => { const newMsgs = [...prev]; const lastMsg = newMsgs[newMsgs.length - 1]; lastMsg.content += chunk; return newMsgs; }); }
-      const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
-      await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) }) }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
+      
+      // ✅ 修复文字聊天的流式处理
+      if (response.headers.get("content-type")?.includes("application/json")) {
+          // 如果文字模型突然返回 JSON（通常是报错），这里可以捕获
+          const data = await response.json();
+          setMessages(prev => [...prev, { role: 'assistant', content: data.error || "请求失败" }]);
+      } else {
+          // 正常的流式文字回复
+          const reader = response.body?.getReader(); const decoder = new TextDecoder();
+          setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+          let fullResponseText = "";
+          while (true) { const { done, value } = await reader?.read()!; if (done) break; const chunk = decoder.decode(value); fullResponseText += chunk; setMessages(prev => { const newMsgs = [...prev]; const lastMsg = newMsgs[newMsgs.length - 1]; lastMsg.content += chunk; return newMsgs; }); }
+          const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
+          await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) }) }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
+      }
     } catch (e) { alert("发送失败"); } finally { setIsLoading(false); }
   };
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
@@ -585,7 +579,6 @@ export default function Home() {
           </div>
           
           <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
-          {/* 其他 Dialog 略，保持原样 */}
       </div>
     </div>
   );
