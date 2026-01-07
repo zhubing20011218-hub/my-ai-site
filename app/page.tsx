@@ -74,7 +74,7 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ... Thinking 组件 (保持不变) ...
+// ... Thinking, AuthPage 组件保持不变 ...
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -100,7 +100,6 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
-// ... AuthPage 组件 (保持不变) ...
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -197,13 +196,12 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器 (Pro版：全自动无损压缩) ---
+// --- ✨ 多媒体生成器 (Pro版：自动压缩 + 直连播放) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-  const [isBlobUrl, setIsBlobUrl] = useState(false);
 
   // 视频高级参数
   const [aspectRatio, setAspectRatio] = useState("16:9");
@@ -213,9 +211,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
   const availableModels = ALL_MODELS.filter(m => m.category === type);
 
-  // 🚀 核心黑科技：智能图片压缩算法
-  // 无论用户传多大的图，强制压缩到 1024px 宽 + 80% 质量
-  // 这样 20MB 的图会变成 300KB，AI 识别完全不受影响
+  // 🚀 图片压缩算法 (防止413错误)
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -225,12 +221,11 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               img.src = event.target?.result as string;
               img.onload = () => {
                   const canvas = document.createElement('canvas');
-                  const MAX_WIDTH = 1024; // AI 模型识别的最佳宽度
+                  const MAX_WIDTH = 1024;
                   const MAX_HEIGHT = 1024;
                   let width = img.width;
                   let height = img.height;
 
-                  // 保持宽高比进行缩放
                   if (width > height) {
                       if (width > MAX_WIDTH) {
                           height *= MAX_WIDTH / width;
@@ -248,7 +243,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                   const ctx = canvas.getContext('2d');
                   if (ctx) {
                       ctx.drawImage(img, 0, 0, width, height);
-                      // 0.8 的质量是画质和体积的最佳平衡点
                       resolve(canvas.toDataURL('image/jpeg', 0.8));
                   }
               };
@@ -256,18 +250,16 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
       });
   };
 
-  // 处理图片上传
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          showToast('loading', '正在优化图片，请稍候...');
+          showToast('loading', '正在优化图片...');
           try {
-              // 自动压缩，用户无感知
               const compressedDataUrl = await compressImage(file);
               setRefImage(compressedDataUrl);
-              showToast('success', '图片优化完成，准备就绪');
+              showToast('success', '图片优化完成');
           } catch (err) {
-              showToast('error', '图片处理失败，请重试');
+              showToast('error', '图片处理失败');
           }
       }
   };
@@ -289,7 +281,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
     setIsGenerating(true);
     setResult(null);
-    setIsBlobUrl(false);
 
     try {
       const response = await fetch('/api/chat', {
@@ -301,30 +292,18 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           aspectRatio,
           resolution,
           duration,
-          image: refImage // 已经是压缩后的安全数据，绝对不会报错
+          image: refImage // 压缩后的图片
         }),
       });
 
-      const contentType = response.headers.get("content-type");
+      const data = await response.json();
 
-      if (contentType && contentType.includes("video/mp4")) {
-          const blob = await response.blob();
-          const blobUrl = window.URL.createObjectURL(blob);
-          setResult(blobUrl);
-          setIsBlobUrl(true);
-          showToast('success', '视频生成并传输成功！');
-      } 
-      else if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (data.error) {
-              alert(`生成失败：${data.error}`);
-          } else if (data.url) {
-              setResult(data.url);
-              setIsBlobUrl(false);
-          }
+      if (response.ok && data.url) {
+          // ✅ 直接设置远程 URL，不进行 Blob 转换
+          setResult(data.url);
+          showToast('success', '生成成功！');
       } else {
-          const text = await response.text();
-          alert(`未知响应：${text.slice(0, 100)}`);
+          alert(`生成失败：${data.error || "未知错误"}`);
       }
 
     } catch (e: any) {
@@ -334,22 +313,16 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     }
   };
 
+  // 📥 强力下载：尝试 Fetch，如果跨域失败则回退到新窗口打开
   const handleForceDownload = async () => {
     if (!result) return;
-    if (isBlobUrl) {
-        const a = document.createElement('a');
-        a.href = result;
-        a.download = `eureka_video_${new Date().getTime()}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        showToast('success', '已保存源文件');
-        return;
-    }
+    
+    showToast('loading', '正在请求源文件...');
+    
     try {
-        showToast('loading', '正在请求原始文件...');
+        // 尝试构建 Blob 下载 (体验最好)
         const response = await fetch(result);
-        if (!response.ok) throw new Error("文件获取失败");
+        if (!response.ok) throw new Error("Fetch failed");
         const blob = await response.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -362,8 +335,10 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         document.body.removeChild(a);
         showToast('success', '下载成功');
     } catch (e) {
-        showToast('error', '下载失败，尝试新窗口打开');
+        // 🚨 兜底方案：如果 fetch 被拦截，直接打开链接让浏览器处理
+        console.warn("Direct fetch failed, falling back to window.open");
         window.open(result, '_blank');
+        showToast('success', '已在新窗口打开下载');
     }
   };
 
@@ -502,6 +477,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
              {result && !isGenerating && (
                 <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
+                    {/* ✅ 直接使用 src={result}，不再使用 Blob */}
                     {type === 'video' ? (
                         <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
                     ) : (
@@ -664,6 +640,7 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
+         {/* 隐藏了 Sidebar 底部显示余额的部分 */}
          <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto"><div onClick={()=>setIsProfileOpen(true)} className="flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all"><div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div><div className="flex-1 overflow-hidden"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 font-mono">专业版用户</div></div></div></div>
       </div>
 

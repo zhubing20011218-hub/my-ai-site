@@ -111,14 +111,10 @@ export async function POST(req: Request) {
         const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
         console.log(`[API Video] Generated Remote URL: ${remoteUrl}`);
 
-        const videoRes = await fetch(remoteUrl);
-        if (!videoRes.ok) throw new Error("Failed to fetch video stream from source");
-
-        return new Response(videoRes.body, {
-            headers: {
-                'Content-Type': 'video/mp4',
-                'Content-Disposition': 'attachment; filename="video.mp4"',
-            }
+        // 🚀 核心修改：直接返回 URL，不再代理下载流 (避免超时和黑屏)
+        return NextResponse.json({ 
+            type: 'video', 
+            url: remoteUrl 
         });
     }
 
