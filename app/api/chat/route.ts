@@ -12,7 +12,7 @@ const replicate = new Replicate({
 export const runtime = "nodejs"; 
 export const maxDuration = 300; 
 
-// 1. GET: 查询任务状态 (解决 504)
+// 1. GET: 轮询任务
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     // --- 🎬 视频任务：接入 Minimax Video-01 ---
     if (model === 'sora-v1' || model === 'veo-google') {
         const prediction = await replicate.predictions.create({
-            // ✅ 使用 Replicate 官方 Minimax 最新 Hash
+            // 使用 Replicate 官方 Minimax 最新 Hash
             version: "7660676e1e3985a63974a9d2712812061405788bd98684d03612d7c71aa8d913",
             input: {
                 prompt: videoPrompt || "A cinematic scene, high detail",

@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import ChatInput, { ALL_MODELS } from "@/components/ChatInput" 
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { 
-  History, Shield, Terminal, Check, User, Loader2, Send, 
+  History, Shield, Terminal, Check, Copy, User, Loader2, Send, 
   X, LogOut, Sparkles, PartyPopper, ArrowRight, ArrowLeft, Lock, Mail, Eye, EyeOff, AlertCircle,
-  Moon, Sun, CreditCard, Plus, MessageCircle, Server, Trash2,
+  Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
   Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
   Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Clapperboard, 
@@ -18,23 +18,37 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as XLSX from 'xlsx';
+import mammoth from 'mammoth';
+import { supabase } from "@/utils/supabase" // ✅ 必须引入这个
 const { saveAs } = require('file-saver');
+import { Document, Packer, Paragraph, TextRun } from "docx";
 
 // ==========================================
-// 1. 类型与配置
+// 1. 类型定义
 // ==========================================
 
-type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
+type Transaction = { 
+    id: string; 
+    type: 'topup' | 'consume'; 
+    amount: string; 
+    description: string; 
+    time: string; 
+}
+
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
   "gemini-exp-1206": 0.10,
-  "sora-v1": 2.50, // Minimax Video
+  "sora-v1": 2.50,
   "veo-google": 1.80,
   "banana-sdxl": 0.20,
 };
+
+// ==========================================
+// 2. 通用 UI 组件
+// ==========================================
 
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
@@ -42,6 +56,7 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   let textColor = "text-green-400";
   if (type === 'loading') { Icon = Loader2; textColor = "text-blue-400"; }
   if (type === 'error') { Icon = X; textColor = "text-red-400"; }
+
   return (
     <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700">
@@ -53,104 +68,176 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
 };
 
 // ==========================================
-// 2. 核心组件
+// 3. 业务组件：AI 思考动画
 // ==========================================
 
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
+    
     const plan = [
         { title: "一、 需求语义深度解析", steps: ["提取关键词核心意图", "检索历史上下文关联"] },
         { title: "二、 知识库实时广度检索", steps: ["跨域检索分布式知识节点", "验证数据准确性"] },
         { title: "三、 响应架构多重建模", steps: ["逻辑推理路径模拟", "优化语言表达风格"] },
         { title: "四、 生成结果合规性自检", steps: ["安全性策略实时匹配", "逻辑闭环终审校验"] }
     ];
+
     useEffect(() => {
       let m1 = 0; let m2 = -1;
       const interval = setInterval(() => {
         if (m1 < plan.length) {
-          if (m2 < plan[m1].steps.length - 1) { m2++; setMinor(m2); }
-          else { m1++; if (m1 < plan.length) { m2 = -1; setMajor(m1); setMinor(-1); } }
+          if (m2 < plan[m1].steps.length - 1) { 
+              m2++; 
+              setMinor(m2); 
+          } else { 
+              m1++; 
+              if (m1 < plan.length) { 
+                  m2 = -1; 
+                  setMajor(m1); 
+                  setMinor(-1); 
+              } 
+          }
         } else { clearInterval(interval); }
       }, 700);
       return () => clearInterval(interval);
     }, []);
+
     return (
       <div className="flex gap-4 my-8">
         <div className="w-9 h-9 bg-slate-900 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0 shadow-lg border border-white/10 text-white text-xs">🧊</div>
         <div className="bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[24px] p-5 shadow-sm w-full max-w-md">
-          <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-3 mb-4"><Terminal size={10}/> <span>Eureka 使用 {modelName} 处理引擎</span></div>
-          <div className="space-y-4">{plan.map((item, i) => (<div key={i} className={`transition-all duration-500 ${i > major ? 'opacity-20' : 'opacity-100'}`}><div className="flex items-center gap-2 mb-2"><div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] border ${i < major ? 'bg-green-500 border-green-500 text-white' : i === major ? 'border-blue-500 text-blue-600 animate-pulse' : 'text-slate-300'}`}>{i < major ? <Check size={10} /> : i + 1}</div><span className={`text-[12px] font-black ${i === major ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}>{item.title}</span></div><div className="ml-6 space-y-1.5 border-l-2 border-slate-100 dark:border-slate-800 pl-4">{item.steps.map((step, j) => (<div key={j} className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${(i < major || (i === major && j <= minor)) ? 'opacity-100' : 'opacity-0'}`}><div className="w-1 h-1 rounded-full bg-slate-300" /><span className="text-slate-400 font-medium">{j + 1}. {step}</span></div>))}</div></div>))}</div>
+          <div className="flex items-center gap-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <Terminal size={10}/> <span>Eureka 使用 {modelName} 处理引擎</span>
+          </div>
+          <div className="space-y-4">
+              {plan.map((item, i) => (
+                  <div key={i} className={`transition-all duration-500 ${i > major ? 'opacity-20' : 'opacity-100'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] border ${i < major ? 'bg-green-500 border-green-500 text-white' : i === major ? 'border-blue-500 text-blue-600 animate-pulse' : 'text-slate-300'}`}>
+                              {i < major ? <Check size={10} /> : i + 1}
+                          </div>
+                          <span className={`text-[12px] font-black ${i === major ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}>{item.title}</span>
+                      </div>
+                      <div className="ml-6 space-y-1.5 border-l-2 border-slate-100 dark:border-slate-800 pl-4">
+                          {item.steps.map((step, j) => (
+                              <div key={j} className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${(i < major || (i === major && j <= minor)) ? 'opacity-100' : 'opacity-0'}`}>
+                                  <div className="w-1 h-1 rounded-full bg-slate-300" />
+                                  <span className="text-slate-400 font-medium">{j + 1}. {step}</span>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              ))}
+          </div>
         </div>
       </div>
     );
-  }
+}
+
+// ==========================================
+// 4. 业务组件：Supabase 认证系统
+// ==========================================
 
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
-    const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
+    const [authMode, setAuthMode] = useState<'login' | 'register'>('login'); 
     const [account, setAccount] = useState("");
     const [password, setPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState(""); 
     const [nickname, setNickname] = useState("");
-    const [verifyCode, setVerifyCode] = useState("");
-    const [count, setCount] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [showPwd, setShowPwd] = useState(false);
-    const [showConfirmPwd, setShowConfirmPwd] = useState(false);
     const [error, setError] = useState("");
 
-    const validateAccount = (val: string) => {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const phoneRegex = /^1[3-9]\d{9}$/; 
-      return emailRegex.test(val) || phoneRegex.test(val) || val === 'admin';
-    };
-
-    const sendCode = async () => {
-      if (!validateAccount(account)) { setError("请输入有效的账号"); return; }
-      setError(""); 
-      try {
-        const res = await fetch('/api/send-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: account }) });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "发送失败");
-        setCount(60); 
-        const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
-      } catch (e: any) { setError(e.message); } 
-    };
-
     const handleAuth = async (e: any) => {
-      e.preventDefault(); setError("");
-      if (!account || !password) { setError("请填写完整信息"); return; }
+      e.preventDefault(); 
+      setError(""); 
       setLoading(true);
-      let type = authMode === 'register' ? 'register' : (authMode === 'forgot' ? 'reset-password' : 'login');
+      
       try {
-        const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, account, password, nickname, verifyCode }) });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "认证失败");
-        if (authMode === 'forgot') { alert("重置成功"); setAuthMode('login'); }
-        else { localStorage.setItem("my_ai_user", JSON.stringify(data)); onLogin(data); }
-      } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+        if (authMode === 'register') {
+            // ✅ Supabase 注册逻辑
+            const { data, error } = await supabase
+                .from('users')
+                .insert([{ 
+                    account, 
+                    password, // 生产环境请务必加密
+                    nickname: nickname || account, 
+                    role: 'user', 
+                    balance: 5.00 
+                }])
+                .select()
+                .single();
+            
+            if (error) throw error;
+            if (data) {
+                alert("注册成功！送您 $5.00 体验金");
+                onLogin(data);
+                localStorage.setItem("my_ai_user", JSON.stringify(data));
+            }
+        } else {
+            // ✅ Supabase 登录逻辑
+            const { data, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('account', account)
+                .eq('password', password) // 生产环境请比对哈希
+                .single();
+            
+            if (error || !data) throw new Error("账号或密码错误，请检查");
+            onLogin(data);
+            localStorage.setItem("my_ai_user", JSON.stringify(data));
+        }
+      } catch (err: any) { 
+          setError(err.message || "请求失败，请检查网络或 Supabase 配置"); 
+      } finally { 
+          setLoading(false); 
+      }
     };
   
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <div className="flex items-center gap-3 mb-8"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
+        <div className="flex items-center gap-3 mb-8">
+            <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div>
+            <h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1>
+        </div>
         <Card className="w-full max-w-sm p-8 shadow-2xl border-none bg-white rounded-[32px]">
           <form onSubmit={handleAuth} className="space-y-4">
-            <h2 className="text-2xl font-black text-slate-900">{authMode === 'login' ? '欢迎回来' : (authMode === 'register' ? '创建账户' : '找回密码')}</h2>
-            {authMode === 'register' && <Input placeholder="设置昵称" value={nickname} onChange={e=>setNickname(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>}
-            <Input placeholder="邮箱/手机号" value={account} onChange={e=>setAccount(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>
-            {authMode !== 'login' && <div className="flex gap-2"><Input placeholder="验证码" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-12 rounded-xl">{count>0?`${count}s`:'获取'}</Button></div>}
-            <Input type="password" placeholder="密码" value={password} onChange={e=>setPassword(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>
+            <h2 className="text-2xl font-black text-slate-900">{authMode === 'login' ? '欢迎回来' : '创建新账户'}</h2>
+            
+            {authMode === 'register' && (
+                <div className="relative group">
+                    <User size={16} className="absolute left-4 top-3.5 text-slate-400"/>
+                    <Input placeholder="设置昵称" value={nickname} onChange={e=>setNickname(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none pl-10"/>
+                </div>
+            )}
+            
+            <div className="relative group">
+                <Mail size={16} className="absolute left-4 top-3.5 text-slate-400"/>
+                <Input placeholder="账号 / 邮箱" value={account} onChange={e=>setAccount(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none pl-10"/>
+            </div>
+            
+            <div className="relative group">
+                <Lock size={16} className="absolute left-4 top-3.5 text-slate-400"/>
+                <Input type="password" placeholder="密码" value={password} onChange={e=>setPassword(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none pl-10"/>
+            </div>
+
             {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
-            <Button className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-xl" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : '立即提交'}</Button>
-            <button type="button" onClick={()=>setAuthMode(authMode==='login'?'register':'login')} className="text-xs text-slate-400 w-full text-center hover:underline mt-2">切换登录/注册</button>
+            
+            <Button className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-xl" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? '立即登录' : '立即注册')}
+            </Button>
+            
+            <button type="button" onClick={()=>setAuthMode(authMode==='login'?'register':'login')} className="text-xs text-slate-400 w-full text-center hover:underline mt-2">
+                {authMode === 'login' ? '没有账号？去注册' : '已有账号？去登录'}
+            </button>
           </form>
         </Card>
       </div>
     );
   }
 
-// --- MediaGenerator: Minimax Video-01 (Sora级) ---
+// ==========================================
+// 5. 业务组件：Minimax Video Generator
+// ==========================================
+
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [prompt, setPrompt] = useState("");
   const [optPrompt, setOptPrompt] = useState(true); 
@@ -158,7 +245,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const [result, setResult] = useState<string | null>(null);
   const [refImage, setRefImage] = useState<string | null>(null);
 
-  // 强力压缩防止 413
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -183,12 +269,12 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          showToast('loading', '正在压缩优化图片...');
+          showToast('loading', '压缩优化中...');
           try {
               const compressedDataUrl = await compressImage(file);
               setRefImage(compressedDataUrl);
-              showToast('success', '参考图就绪');
-          } catch (e) { showToast('error', '图片处理失败'); }
+              showToast('success', '图片就绪');
+          } catch (e) { showToast('error', '失败'); }
       }
   };
 
@@ -196,7 +282,8 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     if (!prompt.trim()) { alert("请输入提示词"); return; }
     
     const cost = type === 'video' ? 2.5 : 0.2;
-    const desc = type === 'video' ? "生成 Sora 级高清视频" : "AI 绘画";
+    const desc = type === 'video' ? "Sora 级视频生成" : "AI 绘画";
+    
     const success = await onConsume(cost, desc);
     if (!success) return;
 
@@ -216,23 +303,22 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
       const text = await response.text();
       let data;
-      try { data = JSON.parse(text); } catch (e) { throw new Error("服务器响应格式错误"); }
+      try { data = JSON.parse(text); } catch (e) { throw new Error("API 响应错误: " + text.slice(0,50)); }
 
       if (!response.ok) throw new Error(data.error || "请求失败");
 
       if (data.type === 'async_job') {
           const jobId = data.id; let jobStatus = data.status; let finalOutput = null;
-          // 轮询解决 504
           while (jobStatus !== 'succeeded' && jobStatus !== 'failed') {
               await new Promise(r => setTimeout(r, 4000));
               const statusRes = await fetch(`/api/chat?id=${jobId}`);
               const statusData = await statusRes.json();
               jobStatus = statusData.status;
               if (jobStatus === 'succeeded') finalOutput = statusData.output;
-              if (jobStatus === 'failed') throw new Error(statusData.error || "AI生成失败");
+              if (jobStatus === 'failed') throw new Error(statusData.error || "AI 生成失败");
           }
           setResult(Array.isArray(finalOutput) ? finalOutput[0] : finalOutput);
-          showToast('success', '制作完成');
+          showToast('success', '生成完成');
       } else if (data.url) {
           setResult(data.url);
           showToast('success', '生成成功');
@@ -254,11 +340,11 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           <div className="space-y-6">
              <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1"><Type size={12}/> 提示词 (PROMPT)</label>
-                <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder="描述你想看到的画面..." className="flex min-h-[150px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-blue-500 resize-none" />
+                <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder="描述画面..." className="flex min-h-[150px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-blue-500 resize-none" />
              </div>
 
              {type === 'video' && (
-                 <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                 <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                     <div className="flex items-center gap-2"><Sparkles size={14} className="text-yellow-500"/><span className="text-[10px] font-bold">提示词优化</span></div>
                     <button onClick={()=>setOptPrompt(!optPrompt)} className={`w-10 h-5 rounded-full transition-colors relative ${optPrompt ? 'bg-blue-600' : 'bg-slate-300'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${optPrompt ? 'left-6' : 'left-1'}`}/></button>
                  </div>
@@ -268,13 +354,13 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                 <label className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1"><ImagePlus size={12}/> 参考图 (可选)</label>
                 <div className="relative h-32 border-2 border-dashed rounded-xl overflow-hidden hover:border-blue-400 transition-colors flex items-center justify-center">
                     <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 z-10 cursor-pointer"/>
-                    {refImage ? <img src={refImage} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400 text-[10px]">点击上传参考图<br/>(自动压缩优化)</div>}
+                    {refImage ? <img src={refImage} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400 text-[10px]">点击上传<br/>(自动压缩)</div>}
                 </div>
              </div>
 
              <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-xl shadow-xl transition-all">
                 {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Send size={16} className="mr-2"/>}
-                {isGenerating ? "生成中 (约3分钟)..." : "开始生成"}
+                {isGenerating ? "生成中 (3分钟)..." : "开始生成"}
              </Button>
           </div>
        </div>
@@ -287,7 +373,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
              ) : isGenerating ? (
                  <div className="text-center animate-pulse"><Loader2 size={40} className="text-blue-500 mx-auto mb-4 animate-spin"/><p className="text-xs text-blue-400 font-black uppercase tracking-widest">AI Processing...</p></div>
              ) : (
-                 <div className="text-center opacity-20"><Film size={60} className="mx-auto mb-2"/><p className="text-xs font-bold tracking-widest uppercase">Ready to Action</p></div>
+                 <div className="text-center opacity-20"><Clapperboard size={60} className="mx-auto mb-2"/><p className="text-xs font-bold tracking-widest uppercase">Ready to Action</p></div>
              )}
           </div>
           {result && <Button onClick={()=>window.open(result,'_blank')} className="absolute bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold px-4 h-10 rounded-full shadow-2xl transition-all"><Download size={14}/> 下载文件</Button>}
@@ -297,7 +383,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 }
 
 // ==========================================
-// 6. Home 主组件 (所有功能逻辑，无删减)
+// 6. Home 组件 (全功能 Supabase 集成版)
 // ==========================================
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -306,11 +392,9 @@ export default function Home() {
   const [chatList, setChatList] = useState<any[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
-  const [profileTab, setProfileTab] = useState('wallet');
-
+  
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("gemini-2.5-flash");
@@ -323,18 +407,13 @@ export default function Home() {
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
   const [toastState, setToastState] = useState({ show: false, type: 'loading' as any, msg: '' });
 
-  // Admin & Support Logic
-  const [adminUsers, setAdminUsers] = useState<any[]>([]);
-  const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
+  // Admin & Support
   const [isAdminCardsOpen, setIsAdminCardsOpen] = useState(false); 
   const [cards, setCards] = useState<any[]>([]);
-  const [cardConfig, setCardConfig] = useState({amount: 10, count: 1, days: 0});
+  const [cardConfig, setCardConfig] = useState({amount: 10, count: 1});
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportInput, setSupportInput] = useState("");
-  const [isAdminSupportOpen, setIsAdminSupportOpen] = useState(false);
-  const [supportSessions, setSupportSessions] = useState<any[]>([]);
-  const [activeSessionUser, setActiveSessionUser] = useState<string|null>(null);
   const supportScrollRef = useRef<HTMLDivElement>(null);
 
   const currentModelName = ALL_MODELS.find(m => m.id === model)?.name || model;
@@ -343,50 +422,57 @@ export default function Home() {
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
     const parts = rawText.split('___RELATED___');
-    const cleanText = parts[0]; 
-    let suggestions: string[] = [];
-    if (parts[1]) suggestions = parts[1].split('|').map((q: string) => q.trim()).filter((q: string) => q.length > 0);
-    return { cleanText, suggestions };
+    return { cleanText: parts[0], suggestions: parts[1] ? parts[1].split('|') : [] };
   };
 
   useEffect(() => { 
-    const u = localStorage.getItem("my_ai_user"); 
-    if(u) { const p = JSON.parse(u); setUser(p); syncUserData(p.id, p.role); fetchChatList(p.id); }
+    // 自动登录检查
+    const checkUser = async () => {
+        const u = localStorage.getItem("my_ai_user");
+        if(u) {
+            const parsed = JSON.parse(u);
+            // 每次刷新都去 Supabase 拉取最新余额
+            const { data } = await supabase.from('users').select('*').eq('id', parsed.id).single();
+            if (data) {
+                setUser(data);
+                fetchChatList(data.id);
+            } else {
+                setUser(parsed); // 离线兜底
+            }
+        }
+    };
+    checkUser();
     if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
   const showToast = (type: any, msg: string) => { setToastState({ show: true, type, msg }); setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000); };
   
-  const syncUserData = async (uid: string, role: string) => { 
-    try { 
-        const res = await fetch(`/api/sync?id=${uid}&role=${role}`); 
-        const data = await res.json(); 
-        if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); }
-        if (role === 'admin' && data.users) setAdminUsers(data.users);
-    } catch (e) {} 
-  };
-
-  const fetchChatList = async (uid: string) => { try { const res = await fetch(`/api/history?userId=${uid}`); const data = await res.json(); setChatList(data.chats || []); } catch(e) {} };
-  
+  // ✅ 核心交易逻辑 (连接 Supabase)
   const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
       if(!user) return false;
-      if (user.role === 'admin') return true;
-      if(type === 'consume' && parseFloat(user.balance) < amount) { alert(`余额不足，需要 $${amount}`); return false; }
-      const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) });
-      const data = await res.json();
-      if(res.ok) { 
-          setUser((p:any)=>({...p, balance: data.balance})); 
-          syncUserData(user.id, user.role);
-          return true; 
+      const currentBalance = parseFloat(user.balance);
+      
+      if (type === 'consume' && currentBalance < amount && user.role !== 'admin') {
+          alert(`余额不足，需要 $${amount}`); return false;
       }
-      return false;
+      
+      const newBalance = type === 'topup' ? currentBalance + amount : currentBalance - amount;
+      
+      // 写入 Supabase
+      const { error } = await supabase.from('users').update({ balance: newBalance }).eq('id', user.id);
+      
+      if (error) {
+          alert("数据库连接失败: " + error.message);
+          return false;
+      }
+      
+      setUser({...user, balance: newBalance});
+      return true;
   };
 
-  const loadChat = async (id: string) => { 
-    if (isLoading) return; setCurrentChatId(id);
-    const res = await fetch(`/api/history?chatId=${id}`, { method: 'PUT' });
-    const data = await res.json(); setMessages(data.chat?.messages || []);
-    if(window.innerWidth < 768) setIsSidebarOpen(false); setActiveTab('home');
+  const fetchChatList = async (userId: string) => {
+      const { data } = await supabase.from('chat_history').select('id, title').eq('user_id', userId).order('created_at', { ascending: false });
+      if(data) setChatList(data);
   };
 
   const handleChatSubmit = async (text: string, attachments: File[] = [], modelId: string = "gemini-2.5-flash") => {
@@ -407,59 +493,66 @@ export default function Home() {
           const chunk = decoder.decode(value); fullText += chunk;
           setMessages(prev => { const msgs = [...prev]; msgs[msgs.length-1].content = fullText; return msgs; }); 
       }
-      await fetch('/api/history', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: [...newHistory, {role:'assistant', content: fullText}], title: currentChatId ? undefined : text.slice(0,30) }) }).then(res=>res.json()).then(d=>{if(d.chat){setCurrentChatId(d.chat.id); fetchChatList(user.id);}});
+      
+      // ✅ 聊天记录保存到 Supabase
+      if (currentChatId) {
+          await supabase.from('chat_history').update({ messages: [...newHistory, {role:'assistant', content: fullText}] }).eq('id', currentChatId);
+      } else {
+          const { data } = await supabase.from('chat_history').insert([{ user_id: user.id, title: text.slice(0,20), messages: [...newHistory, {role:'assistant', content: fullText}] }]).select().single();
+          if (data) { setCurrentChatId(data.id); fetchChatList(user.id); }
+      }
+
     } catch(e) { alert("对话请求失败"); } finally { setIsLoading(false); }
   };
 
-  const startNewChat = () => { setCurrentChatId(null); setMessages([]); setActiveTab('home'); };
-  const deleteChat = async (e:any, id:string) => { e.stopPropagation(); if(confirm("确定删除？")){ await fetch(`/api/history?chatId=${id}`, {method:'DELETE'}); fetchChatList(user.id); if(currentChatId===id) startNewChat(); }};
+  const loadChat = async (id: string) => { 
+    if (isLoading) return; setCurrentChatId(id);
+    const { data } = await supabase.from('chat_history').select('*').eq('id', id).single();
+    if(data) { setMessages(data.messages); setActiveTab('home'); }
+    if(window.innerWidth < 768) setIsSidebarOpen(false);
+  };
+
   const toggleTheme = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem("theme", n?'dark':'light'); };
 
-  const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) {} };
-  const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
+  // --- 管理员逻辑 (Supabase) ---
+  const fetchCards = async () => { 
+      const { data } = await supabase.from('cards').select('*').order('created_at', { ascending: false });
+      if(data) setCards(data);
+  };
+
+  const generateCards = async () => { 
+      const newCards = Array.from({length: cardConfig.count}).map(() => ({
+          code: `EUR-${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
+          amount: cardConfig.amount
+      }));
+      const { error } = await supabase.from('cards').insert(newCards);
+      if(error) alert("生成失败: " + error.message);
+      else { alert("生成成功"); fetchCards(); }
+  };
   
   const redeemCard = async () => { 
       const codeInput = document.getElementById('card-input') as HTMLInputElement;
       const code = codeInput?.value; 
       if(!code) return alert("请输入卡密"); 
-      try { 
-          const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); 
-          const data = await res.json(); 
-          if(data.success) { 
-              alert(`充值成功！到账 $${data.amount}`); 
-              setUser((prev:any) => ({ ...prev, balance: data.balance })); 
-              syncUserData(user.id, user.role); 
-              setIsRechargeOpen(false); 
-          } else { alert(data.error); } 
-      } catch(e) { alert("请求失败"); } 
+
+      // 查卡
+      const { data: card, error } = await supabase.from('cards').select('*').eq('code', code).eq('is_used', false).single();
+      
+      if (error || !card) return alert("无效卡密或已被使用");
+
+      // 充值
+      await handleTX('topup', card.amount, "卡密充值");
+      
+      // 核销
+      await supabase.from('cards').update({ is_used: true }).eq('id', card.id);
+      
+      alert(`充值成功 +$${card.amount}`); 
+      setIsRechargeOpen(false); 
   };
-
-  // ✅ 修复 586 行语法错误：完整的 useEffect
-  useEffect(() => { 
-      let interval: any; 
-      if (user && (isSupportOpen || (user.role === 'admin' && activeSessionUser))) { 
-          const fetchMsg = async () => { 
-              const uid = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; 
-              try { 
-                  const res = await fetch(`/api/support?action=history&userId=${uid}`); 
-                  const data = await res.json(); 
-                  if (data.messages) { 
-                      setSupportMessages(data.messages); 
-                      if (supportScrollRef.current) supportScrollRef.current.scrollIntoView({ behavior: "smooth" }); 
-                  } 
-              } catch(e) {} 
-          }; 
-          fetchMsg(); 
-          interval = setInterval(fetchMsg, 3000); 
-      } 
-      return () => clearInterval(interval); 
-  }, [user, isSupportOpen, activeSessionUser]);
-
-  const fetchSupportSessions = async () => { try { const res = await fetch('/api/support?action=list'); const data = await res.json(); if(data.sessions) setSupportSessions(data.sessions); } catch(e) {} };
-  const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); } catch(e) { alert("发送失败"); } };
 
   const handleDownloadExcel = (csv: string) => { const wb = XLSX.read(csv, { type: 'string' }); XLSX.writeFile(wb, `eureka_${Date.now()}.xlsx`); };
 
+  // ✅ 渲染逻辑 (解决 JSX 报错)
   const renderMainContent = () => {
       switch (activeTab) {
           case 'home':
@@ -477,7 +570,7 @@ export default function Home() {
                  </div>
               );
           case 'video':
-              // ✅ 修复 510行 参数错误
+              // ✅ 修复类型报错
               return <MediaGenerator type="video" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
           case 'image':
               return <MediaGenerator type="image" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
@@ -489,7 +582,7 @@ export default function Home() {
                         <div className="flex-1 overflow-y-auto p-4 space-y-4">
                             {supportMessages.map((m:any,i)=>(<div key={i} className={`flex ${m.sender==='user'?'justify-end':'justify-start'}`}><div className={`px-4 py-2 rounded-2xl text-sm ${m.sender==='user'?'bg-blue-600 text-white':'bg-slate-100 dark:bg-slate-800'}`}>{m.content}</div></div>))}
                         </div>
-                        <div className="p-4 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} placeholder="输入您的问题..." className="flex-1"/><Button onClick={sendSupportMessage}><Send size={16}/></Button></div>
+                        <div className="p-4 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} placeholder="输入您的问题..." className="flex-1"/><Button onClick={()=>setSupportMessages([...supportMessages, {sender:'user', content:supportInput}])}><Send size={16}/></Button></div>
                     </div>
                   </div>
               );
@@ -500,7 +593,7 @@ export default function Home() {
       }
   };
 
-  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); fetchChatList(u.id); }} />;
+  if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); if(u.role==='admin') fetchCards(); fetchChatList(u.id); }} />;
 
   return (
     <div className={`flex h-screen overflow-hidden transition-all duration-500 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
@@ -508,11 +601,11 @@ export default function Home() {
       <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r transition-all duration-300 flex flex-col relative z-20 overflow-hidden`}>
          <div className="p-4 flex flex-col gap-4 shrink-0">
             <div className="text-xl font-black flex items-center gap-2 px-2"><div className="w-6 h-6 bg-slate-900 text-white flex items-center justify-center rounded-lg text-xs font-bold">🧊</div>Eureka</div>
-            <Button onClick={startNewChat} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg"><Plus size={16}/> 开启新对话</Button>
+            <Button onClick={()=>{setCurrentChatId(null); setMessages([]);}} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg"><Plus size={16}/> 开启新对话</Button>
          </div>
          <div className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
             <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">历史记录</div>
-            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group p-3 rounded-xl text-xs cursor-pointer truncate flex justify-between items-center transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 font-bold shadow-sm' : 'hover:bg-slate-200'}`}><span>{chat.title || '无标题'}</span><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"><Trash2 size={12}/></button></div>))}
+            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group p-3 rounded-xl text-xs cursor-pointer truncate flex justify-between items-center transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 font-bold shadow-sm' : 'hover:bg-slate-200'}`}><span>{chat.title || '无标题'}</span><button onClick={async (e)=>{e.stopPropagation(); await supabase.from('chat_history').delete().eq('id', chat.id); fetchChatList(user.id);}} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"><Trash2 size={12}/></button></div>))}
          </div>
          <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-[60] bg-inherit">
              <button onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
