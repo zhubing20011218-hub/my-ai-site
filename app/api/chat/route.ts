@@ -10,13 +10,12 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
-// ✅ Vercel Pro 特权设置
-export const runtime = "edge"; 
-// 🚀 关键：强制声明需要 300秒 (5分钟) 执行时间
+// 🚀 核心修改：移除 'edge'，使用默认 Node.js 环境，配合 Pro 账号实现 5分钟超时
 export const maxDuration = 300; 
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const startTime = Date.now(); // ⏱️ 开始计时
+  const startTime = Date.now(); 
   console.log(`[API Start] Request received at ${new Date().toISOString()}`);
 
   try {
@@ -27,7 +26,7 @@ export async function POST(req: Request) {
     console.log(`[API Processing] Model: ${model}`);
 
     // ============================================================
-    // 🎨 分支 1：绘图模型 (Banana SDXL)
+    // 🎨 分支 1：绘图模型
     // ============================================================
     if (model === 'banana-sdxl') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
@@ -40,7 +39,7 @@ export async function POST(req: Request) {
         const duration = (Date.now() - startTime) / 1000;
         console.log(`[API Image Done] Finished in ${duration.toFixed(2)}s`);
         
-        return new Response(`![Generated Image](${output[0]})\n\n✅ **绘图完成！**\n*耗时: ${duration.toFixed(2)}秒 | 消耗: $0.20*`);
+        return new Response(`![Generated Image](${output[0]})\n\n✅ **绘图完成！**`);
     }
 
     // ============================================================
@@ -51,15 +50,15 @@ export async function POST(req: Request) {
         
         console.log(`[API Video Start] Sending request to Replicate... (Expect long wait)`);
         
-        // 🚀 使用高清分辨率。Pro 账号 300s 足够跑完。
+        // 使用高清分辨率，Pro 账号 Node.js 环境下等待 5 分钟毫无压力
         const videoOutput: any = await replicate.run(
           "anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
           { 
             input: { 
               prompt: prompt, 
               fps: 24, 
-              width: 1024,   // ✅ 高清
-              height: 576,   // ✅ 高清
+              width: 1024,   
+              height: 576,   
               num_frames: 24 
             } 
           }
@@ -69,7 +68,6 @@ export async function POST(req: Request) {
         console.log(`[API Video Done] Finished in ${duration.toFixed(2)}s. URL: ${videoOutput[0]}`);
         
         const videoUrl = videoOutput[0];
-        // 这里只返回纯 URL，方便前端处理下载
         return new Response(videoUrl);
     }
 
@@ -133,7 +131,6 @@ export async function POST(req: Request) {
               if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
             }
             controller.close();
-            console.log(`[API Text Done] Stream finished.`);
         } catch (e) {
             console.error("Stream error:", e);
             controller.close();
@@ -144,20 +141,18 @@ export async function POST(req: Request) {
     return new Response(stream);
 
   } catch (error: any) {
-    // ✅ 修复点：这里不使用 toFixed，保持 duration 为数字类型，以便下面做比较
     const duration = (Date.now() - startTime) / 1000;
-    
     console.error(`[API ERROR] Occurred after ${duration.toFixed(2)}s. Details:`, error);
     
     let userMsg = "服务暂时繁忙，请稍后再试。";
-    if (error.toString().includes("402")) userMsg = "Replicate 余额不足，请充值。";
+    if (error.toString().includes("402")) userMsg = "API 余额不足，请联系管理员。";
     if (error.toString().includes("429")) userMsg = "该模型调用过于频繁，请稍后再试。"; 
     
-    // 这里的比较就不会报错了，因为 duration 是数字
+    // 超时检测
     if (duration > 55 && duration < 65) {
-         userMsg = "视频生成超时 (Vercel免费版限制)。请确保您已升级Pro并重新部署。";
+         userMsg = "生成时间较长，请检查网络或稍后重试。";
     }
     
-    return new Response(`❌ **请求失败**\n\n${userMsg}\n\n*耗时: ${duration.toFixed(2)}秒*`);
+    return new Response(`❌ **请求失败**\n\n${userMsg}`);
   }
 }
