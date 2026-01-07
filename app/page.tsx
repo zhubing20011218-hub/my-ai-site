@@ -12,7 +12,7 @@ import {
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
   Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
-  Settings2, Upload, Monitor, Smartphone, Square, Film
+  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -21,9 +21,11 @@ import mammoth from 'mammoth';
 const { saveAs } = require('file-saver');
 import { Document, Packer, Paragraph, TextRun } from "docx";
 
+// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
+// --- 价格配置 ---
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
@@ -33,25 +35,12 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
+// --- 视频参数配置 ---
 const ASPECT_RATIOS = [
-    { label: "16:9", value: "16:9", icon: Monitor, desc: "横屏" },
-    { label: "9:16", value: "9:16", icon: Smartphone, desc: "竖屏" },
-    { label: "1:1", value: "1:1", icon: Square, desc: "正方" },
-    { label: "4:3", value: "4:3", icon: Monitor, desc: "通用" },
-    { label: "3:4", value: "3:4", icon: Smartphone, desc: "通用" },
-    { label: "21:9", value: "21:9", icon: Film, desc: "电影" },
-];
-
-const RESOLUTIONS = [
-    { label: "720p (高清)", value: "720p" },
-    { label: "1080p (全高清)", value: "1080p" },
-    { label: "2K (超清)", value: "2k" },
-];
-
-const DURATIONS = [
-    { label: "5秒", value: 5 },
-    { label: "10秒", value: 10 },
-    { label: "15秒", value: 15 },
+    { label: "16:9", value: "16:9", icon: Monitor },
+    { label: "9:16", value: "9:16", icon: Smartphone },
+    { label: "1:1", value: "1:1", icon: Square },
+    { label: "21:9", value: "21:9", icon: Film },
 ];
 
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
@@ -71,6 +60,7 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
+// --- Thinking 组件 (完整保留) ---
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -96,6 +86,7 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
+// --- AuthPage 组件 (完整保留) ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -192,23 +183,20 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器 (Pro版：全自动无损压缩 + 异步轮询 + 状态检查) ---
+// --- ✨ MediaGenerator (UI 重构版) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
-  const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
+  const [negPrompt, setNegPrompt] = useState("low quality, bad quality, blurry, distorted"); 
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  // 视频高级参数
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [resolution, setResolution] = useState("1080p");
-  const [duration, setDuration] = useState(5);
+  // 视频专属参数
+  const [videoMode, setVideoMode] = useState<'text2video' | 'img2video'>('text2video');
   const [refImage, setRefImage] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [numFrames, setNumFrames] = useState(24);
 
-  const availableModels = ALL_MODELS.filter(m => m.category === type);
-
-  // 🚀 强力压缩：限制宽为 512px，质量 0.6，确保 < 500KB
-  // 这彻底解决了 413 Payload Too Large 问题
+  // 压缩图片
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -218,15 +206,13 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               img.src = event.target?.result as string;
               img.onload = () => {
                   const canvas = document.createElement('canvas');
-                  // 强制缩小到 512px，保证体积 < 500KB，绝对安全
-                  const MAX_WIDTH = 512;
-                  const MAX_HEIGHT = 512;
+                  const MAX_WIDTH = 512; 
                   let width = img.width;
                   let height = img.height;
                   if (width > height) {
                       if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                   } else {
-                      if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                      if (height > 512) { width *= 512 / height; height = 512; }
                   }
                   canvas.width = width;
                   canvas.height = height;
@@ -243,269 +229,202 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          showToast('loading', '正在优化图片...');
-          try {
-              const compressedDataUrl = await compressImage(file);
-              setRefImage(compressedDataUrl);
-              showToast('success', '图片优化完成');
-          } catch (err) {
-              showToast('error', '图片处理失败');
-          }
+          showToast('loading', '正在处理图片...');
+          const compressedDataUrl = await compressImage(file);
+          setRefImage(compressedDataUrl);
+          showToast('success', '图片就绪');
       }
   };
 
   const handleGenerate = async () => {
     if (!prompt.trim() && !refImage) {
-        alert("请输入提示词或上传参考图片");
+        alert("请输入提示词或上传图片");
         return;
     }
-    const cost = MODEL_PRICING[model] || 0.5;
-    
+    const cost = 2.5; 
+    const desc = type === 'video' ? `生成视频 (${videoMode})` : "生成图片";
+
     if (type === 'video') {
-        const warning = refImage ? "图生视频模式" : "文生视频模式";
-        if(!confirm(`${warning}：生成需 1-3 分钟，期间请勿关闭页面。确认继续？`)) return;
+       if(!confirm(`生成视频需 1-3 分钟，请勿关闭页面。确认消耗 $${cost}？`)) return;
     }
 
-    const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);
+    const success = await onConsume(cost, desc);
     if (!success) return;
 
     setIsGenerating(true);
     setResult(null);
 
     try {
-      // 1. 发起任务 (返回任务 ID)
+      const payload: any = {
+        messages: [{ role: 'user', content: prompt }],
+        model: type === 'video' ? 'sora-v1' : 'banana-sdxl', 
+        aspectRatio,
+      };
+
+      if (type === 'video') {
+          payload.videoMode = videoMode; 
+          payload.image = videoMode === 'img2video' ? refImage : null;
+          payload.numFrames = numFrames; 
+          payload.negative_prompt = negPrompt;
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: [{ role: 'user', content: prompt }], 
-          model: model,
-          aspectRatio,
-          resolution,
-          duration,
-          image: refImage 
-        }),
+        body: JSON.stringify(payload),
       });
 
       const contentType = response.headers.get("content-type");
       
       if (contentType && contentType.includes("application/json")) {
           const data = await response.json();
-          
           if (data.type === 'async_job') {
-              // --- 2. 轮询 (Polling) ---
-              // 这是解决 504 Time-out 的唯一办法
               const jobId = data.id;
               let jobStatus = data.status;
               let finalOutput = null;
 
-              // 循环检查，直到成功或失败
               while (jobStatus !== 'succeeded' && jobStatus !== 'failed' && jobStatus !== 'canceled') {
-                  await new Promise(r => setTimeout(r, 4000)); // 每4秒查一次
-                  
+                  await new Promise(r => setTimeout(r, 4000));
                   const statusRes = await fetch(`/api/chat?id=${jobId}`);
                   const statusData = await statusRes.json();
-                  
                   jobStatus = statusData.status;
-                  if (jobStatus === 'succeeded') {
-                      finalOutput = statusData.output;
-                  } else if (jobStatus === 'failed') {
-                      throw new Error(`任务失败: ${JSON.stringify(statusData.error)}`);
-                  }
+                  if (jobStatus === 'succeeded') finalOutput = statusData.output;
+                  else if (jobStatus === 'failed') throw new Error("AI 生成任务失败，请检查参数或稍后重试");
               }
-
-              if (finalOutput) {
-                  // 视频模型可能返回 [url] 数组或 url 字符串
-                  const url = Array.isArray(finalOutput) ? finalOutput[0] : finalOutput;
-                  setResult(url);
-                  showToast('success', '生成完毕！');
-              }
-          } 
-          else if (data.url) { // 图片模式
+              const url = Array.isArray(finalOutput) ? finalOutput[0] : finalOutput;
+              setResult(url);
+              showToast('success', '生成完成！');
+          } else if (data.url) {
               setResult(data.url);
-              showToast('success', '图片生成完毕！');
+              showToast('success', '图片生成完成');
           } else {
-              // 错误处理
-              const errMsg = data.error || "请求失败";
-              if(errMsg.includes("413")) alert("图片仍然过大，请换一张更小的图重试");
-              else alert(errMsg);
+             alert(data.error || "请求失败");
           }
       } else {
-          // Gemini 文本模式
           const text = await response.text();
-          if (type === 'image' && text.includes("![Generated Image]")) {
-              const urlMatch = text.match(/\((https?:\/\/.*?)\)/);
-              if (urlMatch) setResult(urlMatch[1]);
-          } else {
-              setResult(text);
-          }
-          showToast('success', '生成成功！');
+          setResult(text);
       }
 
     } catch (e: any) {
-      console.error(e);
-      alert(`生成出错：${e.message}`);
+      alert(`错误：${e.message}`);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleForceDownload = async () => {
-    if (!result) return;
-    window.open(result, '_blank');
-    showToast('success', '正在尝试打开下载链接...');
+  const handleForceDownload = () => {
+    if (result) window.open(result, '_blank');
   };
 
   return (
     <div className="flex flex-col md:flex-row h-full gap-6 p-6 max-w-7xl mx-auto">
        <div className="w-full md:w-1/3 flex flex-col gap-6 overflow-y-auto pr-2">
-          <div>
-            <h2 className="text-2xl font-black mb-2 flex items-center gap-2">
-                {type === 'video' ? <Video className="text-blue-500"/> : <ImageIcon className="text-yellow-500"/>}
-                AI {type === 'video' ? 'Video' : 'Image'} Studio
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">专业级 AI 创作控制台</p>
-          </div>
+          {type === 'video' && (
+              <div className="bg-slate-100 dark:bg-slate-900 p-1 rounded-xl flex">
+                  <button onClick={() => setVideoMode('text2video')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${videoMode==='text2video' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                      <Type size={14} className="inline mr-1"/> 文生视频
+                  </button>
+                  <button onClick={() => setVideoMode('img2video')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${videoMode==='img2video' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
+                      <ImagePlus size={14} className="inline mr-1"/> 图生视频
+                  </button>
+              </div>
+          )}
 
-          <div className="space-y-6">
-             <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Settings2 size={12}/> 选择模型</label>
-                <div className="grid grid-cols-1 gap-2">
-                    {availableModels.map(m => (
-                        <button 
-                            key={m.id} 
-                            onClick={() => setModel(m.id)}
-                            className={`p-3 rounded-xl border text-left transition-all ${model === m.id ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-500'}`}
-                        >
-                            <div className="font-bold text-sm">{m.name}</div>
-                            <div className={`text-xs ${model === m.id ? 'text-blue-100' : 'text-slate-500'}`}>{m.desc}</div>
-                        </button>
-                    ))}
-                </div>
-             </div>
-
-             {type === 'video' && (
-                 <>
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><ImageIcon size={12}/> 参考图 (可选 - 图生视频)</label>
-                        <div className="relative group">
-                            <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
-                            <div className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center transition-all ${refImage ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-slate-300 dark:border-slate-700 hover:border-blue-400'}`}>
-                                {refImage ? (
-                                    <div className="relative w-full h-32">
-                                        <img src={refImage} alt="Ref" className="w-full h-full object-cover rounded-lg"/>
-                                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">点击更换</div>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <Upload size={24} className="text-slate-400 mb-2"/>
-                                        <span className="text-xs text-slate-500">点击上传图片 (自动压缩)</span>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Clock size={12}/> 视频时长</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {DURATIONS.map(d => (
-                                <button key={d.value} onClick={() => setDuration(d.value)} className={`py-2 rounded-lg text-[10px] font-bold border transition-all ${duration === d.value ? 'bg-blue-600 border-blue-600 text-white' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-500'}`}>
-                                    {d.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><Maximize2 size={12}/> 清晰度</label>
-                        <select value={resolution} onChange={(e) => setResolution(e.target.value)} className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-transparent text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            {RESOLUTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        </select>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-slate-400 flex items-center gap-1"><LayoutGrid size={12}/> 画幅比例</label>
-                        <div className="grid grid-cols-6 gap-2">
-                            {ASPECT_RATIOS.map(r => (
-                                <button key={r.value} onClick={() => setAspectRatio(r.value)} className={`flex flex-col items-center justify-center p-1.5 rounded-lg border transition-all ${aspectRatio === r.value ? 'bg-blue-600 border-blue-600 text-white' : 'bg-transparent border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
-                                    <r.icon size={14} className="mb-1"/>
-                                    <span className="text-[9px] font-bold">{r.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                 </>
-             )}
-
-             <div className="space-y-2">
-                <label className="text-xs font-bold uppercase text-slate-400">提示词 (Prompt)</label>
+          <div className="space-y-4">
+             <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Prompt (正向提示词)</label>
                 <textarea 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={type === 'video' ? (refImage ? "描述让这张图片动起来的效果，例如：草地上的玩具在跑动..." : "一只在未来城市上空飞行的无人机，4k高清，电影感...") : "赛博朋克风格的街道，霓虹灯，雨夜..."}
-                    className="flex min-h-[100px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-800 dark:text-slate-200 resize-none"
+                    placeholder={videoMode === 'img2video' ? "描述图片的动态，例如：火焰在燃烧，烟雾缭绕..." : "一只在未来城市上空飞行的无人机，4k高清，电影感..."}
+                    className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-blue-500 resize-none"
                 />
-            </div>
+             </div>
+             
+             <div className="space-y-1">
+                <label className="text-[10px] font-bold uppercase text-slate-400">Negative Prompt (负向提示词)</label>
+                <textarea 
+                    value={negPrompt}
+                    onChange={(e) => setNegPrompt(e.target.value)}
+                    className="flex min-h-[60px] w-full rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-red-500 resize-none text-slate-500"
+                />
+             </div>
+
+             {type === 'video' && videoMode === 'img2video' && (
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-slate-400">Input Image (参考图)</label>
+                    <div className="relative group cursor-pointer">
+                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"/>
+                        <div className={`border-2 border-dashed rounded-xl h-24 flex flex-col items-center justify-center transition-all ${refImage ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400'}`}>
+                            {refImage ? <span className="text-xs text-blue-600 font-bold">图片已加载 ✅</span> : <span className="text-xs text-slate-400">点击上传图片 (Max 500KB)</span>}
+                        </div>
+                    </div>
+                </div>
+             )}
+
+             {type === 'video' && videoMode === 'text2video' && (
+                 <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Aspect Ratio</label>
+                        <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full h-9 rounded-lg border text-xs px-2 bg-transparent">
+                            {ASPECT_RATIOS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-400">Duration (Frames)</label>
+                        <select value={numFrames} onChange={(e) => setNumFrames(Number(e.target.value))} className="w-full h-9 rounded-lg border text-xs px-2 bg-transparent">
+                            <option value={24}>24帧 (约1秒) - 快速</option>
+                            <option value={48}>48帧 (约2秒) - 标准</option>
+                            <option value={72}>72帧 (约3秒) - 高质</option>
+                        </select>
+                     </div>
+                 </div>
+             )}
 
              <Button 
                 onClick={handleGenerate} 
-                disabled={isGenerating || (!prompt.trim() && !refImage)}
-                className={`w-full h-12 text-base font-bold text-white shadow-lg transition-all ${isGenerating ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'}`}
+                disabled={isGenerating || (!prompt && !refImage)}
+                className={`w-full h-12 text-sm font-bold text-white shadow-lg transition-all ${isGenerating ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}
              >
-                {isGenerating ? <Loader2 className="animate-spin mr-2"/> : (type === 'video' ? <Video size={18} className="mr-2"/> : <ImageIcon size={18} className="mr-2"/>)}
-                {isGenerating ? (type==='video'?"正在渲染视频 (约1-3分钟)...":"正在绘图...") : "开始生成"}
+                {isGenerating ? <Loader2 className="animate-spin mr-2"/> : (type==='video' ? <Video size={16} className="mr-2"/> : <ImageIcon size={16} className="mr-2"/>)}
+                {isGenerating ? "正在生成..." : "Generate"}
              </Button>
           </div>
        </div>
 
-       <div className="flex-1 bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden relative flex flex-col">
-          <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center">
-             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">Output Preview</div>
-             {result && (
-                <div className="flex gap-2">
-                    <Button size="sm" onClick={handleForceDownload} className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1 shadow-sm font-bold">
-                        <Download size={14}/> 下载源文件
-                    </Button>
+       <div className="flex-1 bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden relative flex flex-col items-center justify-center">
+            {result ? (
+                type === 'video' || result.endsWith('.mp4') ? (
+                    <div className="relative w-full h-full flex flex-col">
+                        <div className="absolute top-4 right-4 z-10"><Button size="sm" onClick={handleForceDownload} className="bg-white text-black hover:bg-slate-200"><Download size={14} className="mr-1"/> Download</Button></div>
+                        <video src={result} controls autoPlay loop className="w-full h-full object-contain bg-black"/>
+                    </div>
+                ) : (
+                    <div className="relative w-full h-full">
+                        <div className="absolute top-4 right-4 z-10"><Button size="sm" onClick={handleForceDownload} className="bg-white text-black hover:bg-slate-200"><Download size={14} className="mr-1"/> Download</Button></div>
+                        <img src={result} className="w-full h-full object-contain"/>
+                    </div>
+                )
+            ) : (
+                <div className="text-center text-slate-600">
+                    <div className="mb-4 flex justify-center opacity-50">{type==='video' ? <Video size={64}/> : <ImageIcon size={64}/>}</div>
+                    <p className="text-sm">Ready to generate</p>
                 </div>
-             )}
-          </div>
-          
-          <div className="flex-1 flex items-center justify-center p-6 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] bg-opacity-20 relative min-h-[400px]">
-             {!result && !isGenerating && (
-                <div className="text-center opacity-30">
-                    <div className="mb-4 flex justify-center">{type === 'video' ? <Video size={48}/> : <ImageIcon size={48}/>}</div>
-                    <p className="text-sm">暂无生成内容</p>
-                    <p className="text-xs">配置参数并点击生成</p>
+            )}
+            
+            {isGenerating && (
+                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
+                    <Loader2 size={48} className="text-blue-500 animate-spin mb-4"/>
+                    <p className="text-blue-400 font-bold animate-pulse">AI is working...</p>
+                    <p className="text-xs text-slate-500 mt-2">预计耗时 1-3 分钟</p>
                 </div>
-             )}
-             
-             {isGenerating && (
-                <div className="text-center animate-pulse">
-                    <Loader2 size={48} className="animate-spin text-blue-500 mx-auto mb-4"/>
-                    <p className="text-base text-blue-400 font-black mb-2">AI 正在全力渲染中...</p>
-                    <p className="text-xs text-slate-500 font-mono">这可能需要几分钟时间，请耐心等待，不要关闭页面。</p>
-                    {type==='video' && <div className="mt-4 px-4 py-2 bg-blue-500/10 text-blue-300 text-xs rounded-full inline-flex items-center gap-2"><Clock size={12}/> 预计耗时: 1-3 分钟</div>}
-                </div>
-             )}
-
-             {result && !isGenerating && (
-                <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
-                    {/* ✅ 根据结果类型或后缀判断显示 video 还是 img */}
-                    {type === 'video' || (typeof result === 'string' && result.endsWith('.mp4')) ? (
-                        <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
-                    ) : (
-                        <img src={result} alt="Generated" className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10 object-contain" />
-                    )}
-                </div>
-             )}
-          </div>
+            )}
        </div>
     </div>
   );
 }
 
-// ... Home 组件主体 ...
+// --- Home 组件主体 ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -654,8 +573,8 @@ export default function Home() {
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
             {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* ✅ 修复核心：将底部的 div 改为 button，并添加 z-[100] 和 relative，确保绝对可以点击 */}
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-[100]">
+         {/* ✅ 修复：z-50 */}
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-50">
              <div onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
                 <div className="flex-1 overflow-hidden">
