@@ -292,18 +292,28 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           aspectRatio,
           resolution,
           duration,
-          image: refImage // 压缩后的图片
+          image: refImage 
         }),
       });
 
-      const data = await response.json();
+      // 🚨 核心修正：使用 .text() 而不是 .json()
+      // 之前这里 .json() 可能会把普通字符串当对象解析失败，或者把错误信息当 URL
+      const data = await response.text();
 
-      if (response.ok && data.url) {
-          // ✅ 核心修复：直接保存远程 URL，不进行 Blob 转换
-          setResult(data.url);
-          showToast('success', '生成成功！');
+      if (!response.ok) {
+          // 如果后端报错，data 就是错误信息
+          alert(`生成失败：${data}`);
       } else {
-          alert(`生成失败：${data.error || "未知错误"}`);
+          // 如果成功，data 就是 URL 字符串
+          // 额外的检查：如果是图片模式，后端返回的是 Markdown，我们需要提取 URL
+          if (type === 'image' && data.includes("![Generated Image]")) {
+              const urlMatch = data.match(/\((https?:\/\/.*?)\)/);
+              if (urlMatch) setResult(urlMatch[1]);
+          } else {
+              // 视频模式，直接是 URL
+              setResult(data);
+          }
+          showToast('success', '生成成功！');
       }
 
     } catch (e: any) {
@@ -313,33 +323,11 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     }
   };
 
-  // 📥 修复：直接下载逻辑 (失败则跳转)
+  // 📥 终极下载：直接打开链接，不走 Fetch 代理
   const handleForceDownload = async () => {
     if (!result) return;
-    
-    showToast('loading', '正在请求源文件...');
-    
-    try {
-        // 尝试 Fetch 下载 (为了能重命名文件)
-        const response = await fetch(result);
-        if (!response.ok) throw new Error("Fetch failed");
-        const blob = await response.blob();
-        const blobUrl = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        const ext = type === 'video' ? 'mp4' : 'png';
-        a.download = `eureka_${type}_${new Date().getTime()}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(blobUrl);
-        document.body.removeChild(a);
-        showToast('success', '下载成功');
-    } catch (e) {
-        // 🚨 兜底方案：如果因为跨域下载失败，直接在新窗口打开 URL
-        console.warn("Direct fetch failed, falling back to window.open");
-        window.open(result, '_blank');
-        showToast('success', '已在新窗口打开下载');
-    }
+    window.open(result, '_blank');
+    showToast('success', '正在尝试打开下载链接...');
   };
 
   return (
