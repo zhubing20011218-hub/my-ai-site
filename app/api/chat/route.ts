@@ -35,6 +35,7 @@ function calculateDimensions(ratio: string, resolution: string) {
         width = Math.round(height * (wRatio / hRatio));
     }
 
+    // 必须是 64 的倍数
     width = Math.floor(width / 64) * 64;
     height = Math.floor(height / 64) * 64;
 
@@ -42,9 +43,6 @@ function calculateDimensions(ratio: string, resolution: string) {
 }
 
 export async function POST(req: Request) {
-  const startTime = Date.now(); 
-  console.log(`[API Start] Request received`);
-
   try {
     const { messages, model, aspectRatio, resolution, duration, image } = await req.json();
     const lastMessage = messages[messages.length - 1];
@@ -80,7 +78,7 @@ export async function POST(req: Request) {
               "stability-ai/stable-video-diffusion:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
               {
                 input: {
-                  input_image: image, // 前端已压缩，这里直接发
+                  input_image: image, // 前端已压缩
                   video_length: "25_frames_with_svd_xt",
                   sizing_strategy: "maintain_aspect_ratio",
                   frames_per_second: 6,
@@ -108,10 +106,11 @@ export async function POST(req: Request) {
             );
         }
         
+        // Replicate 可能返回字符串或数组，做个兼容
         const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
-        console.log(`[API Video] Generated Remote URL: ${remoteUrl}`);
+        console.log(`[API Video] Success URL: ${remoteUrl}`);
 
-        // 🚀 核心修改：停止代理下载，直接返回 JSON URL
+        // 🚀 核心修复：直接返回 URL，绝对不要在服务器端下载！
         return NextResponse.json({ 
             type: 'video', 
             url: remoteUrl 

@@ -299,7 +299,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
       const data = await response.json();
 
       if (response.ok && data.url) {
-          // ✅ 核心修复：直接保存远程 URL，不要去转 Blob
+          // ✅ 核心修复：直接保存远程 URL，不进行 Blob 转换
           setResult(data.url);
           showToast('success', '生成成功！');
       } else {
