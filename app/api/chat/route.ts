@@ -12,7 +12,7 @@ const replicate = new Replicate({
 export const runtime = "nodejs"; 
 export const maxDuration = 300; 
 
-// 1. GET: 查询任务状态
+// 1. GET: 查询任务状态 (解决 504)
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
