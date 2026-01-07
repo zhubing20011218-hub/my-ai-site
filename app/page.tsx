@@ -21,11 +21,9 @@ import mammoth from 'mammoth';
 const { saveAs } = require('file-saver');
 import { Document, Packer, Paragraph, TextRun } from "docx";
 
-// --- 类型定义 ---
 type Transaction = { id: string; type: 'topup' | 'consume'; amount: string; description: string; time: string; }
 type TabType = 'home' | 'video' | 'image' | 'promo' | 'custom' | 'contact';
 
-// --- 价格配置 ---
 const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
@@ -35,7 +33,6 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// --- 视频参数配置 ---
 const ASPECT_RATIOS = [
     { label: "16:9", value: "16:9", icon: Monitor, desc: "横屏" },
     { label: "9:16", value: "9:16", icon: Smartphone, desc: "竖屏" },
@@ -74,7 +71,6 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ... Thinking, AuthPage 组件保持不变 ...
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -196,14 +192,12 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     );
   }
 
-// --- ✨ 多媒体生成器 (Pro版：自动压缩 + 直连播放) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [model, setModel] = useState(type === 'video' ? 'sora-v1' : 'banana-sdxl');
   const [prompt, setPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
-  // 视频高级参数
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [resolution, setResolution] = useState("1080p");
   const [duration, setDuration] = useState(5);
@@ -211,7 +205,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
   const availableModels = ALL_MODELS.filter(m => m.category === type);
 
-  // 🚀 图片压缩算法 (防止413错误)
+  // 压缩图片防止 413 错误
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -227,15 +221,9 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
                   let height = img.height;
 
                   if (width > height) {
-                      if (width > MAX_WIDTH) {
-                          height *= MAX_WIDTH / width;
-                          width = MAX_WIDTH;
-                      }
+                      if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                   } else {
-                      if (height > MAX_HEIGHT) {
-                          width *= MAX_HEIGHT / height;
-                          height = MAX_HEIGHT;
-                      }
+                      if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                   }
 
                   canvas.width = width;
@@ -273,7 +261,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     
     if (type === 'video') {
         const warning = refImage ? "图生视频模式" : "文生视频模式";
-        if(!confirm(`${warning}：生成 ${resolution} / ${duration}秒 的视频需要约 1-3 分钟。请勿刷新页面，确认继续？`)) return;
+        if(!confirm(`${warning}：生成需 1-3 分钟，请勿刷新。确认继续？`)) return;
     }
 
     const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);
@@ -296,17 +284,17 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
         }),
       });
 
-      // 🚨 核心修正：使用 .text() 而不是 .json()
       const data = await response.text();
 
       if (!response.ok) {
           alert(`生成失败：${data}`);
       } else {
+          // 如果是图片，提取 markdown 中的 URL
           if (type === 'image' && data.includes("![Generated Image]")) {
               const urlMatch = data.match(/\((https?:\/\/.*?)\)/);
               if (urlMatch) setResult(urlMatch[1]);
           } else {
-              // 视频模式，直接是 URL
+              // 视频直接是 URL
               setResult(data);
           }
           showToast('success', '生成成功！');
@@ -319,11 +307,12 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     }
   };
 
-  // 📥 终极下载：直接打开链接，不走 Fetch 代理
+  // ✅ 修复：简单直接的下载方式
   const handleForceDownload = async () => {
     if (!result) return;
+    // 直接打开新窗口，这是最稳妥的下载方式，不走 blob
     window.open(result, '_blank');
-    showToast('success', '正在尝试打开下载链接...');
+    showToast('success', '已在新窗口打开下载');
   };
 
   return (
@@ -461,7 +450,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
              {result && !isGenerating && (
                 <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
-                    {/* ✅ 预览修复：直接播放 URL，不再走 Blob，避免黑屏 */}
                     {type === 'video' ? (
                         <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
                     ) : (
@@ -475,7 +463,6 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// ... Home 组件主体 (保持不变) ...
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
@@ -622,9 +609,9 @@ export default function Home() {
          </div>
          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
-            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
+            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-500 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* ✅ 修复：将底部的 div 改为 button，并添加 z-50，确保可以点击 */}
+         {/* ✅ 修复核心：将底部的 div 改为 button，并添加 z-50 和 relative，确保绝对可以点击 */}
          <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-50">
              <button onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>

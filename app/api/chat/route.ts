@@ -14,23 +14,21 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 function calculateDimensions(ratio: string, resolution: string) {
+    // 强制限制最大宽/高为 1024，防止模型崩坏返回垃圾数据
+    // 即使选了 4K，也先按模型能跑的最大值跑，保证成功率
+    const MAX_SIDE = 1024; 
     let width = 1024;
     let height = 576;
-    let baseSize = 1024; 
-
-    if (resolution === '720p') baseSize = 1280;
-    if (resolution === '1080p') baseSize = 1920;
-    if (resolution === '2k') baseSize = 2560;
-    if (resolution === '4k') baseSize = 3840; 
 
     const [wRatio, hRatio] = ratio.split(':').map(Number);
     if (wRatio > hRatio) {
-        width = baseSize;
+        width = MAX_SIDE;
         height = Math.round(width * (hRatio / wRatio));
     } else {
-        height = baseSize;
+        height = MAX_SIDE;
         width = Math.round(height * (wRatio / hRatio));
     }
+    // 必须是 64 的倍数
     width = Math.floor(width / 64) * 64;
     height = Math.floor(height / 64) * 64;
     return { width, height };
@@ -60,6 +58,7 @@ export async function POST(req: Request) {
         let videoOutput: any;
         
         if (image) {
+            // 图生视频
             videoOutput = await replicate.run(
               "stability-ai/stable-video-diffusion:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
               {
@@ -73,6 +72,7 @@ export async function POST(req: Request) {
               }
             );
         } else {
+            // 文生视频：确保参数安全
             const { width, height } = calculateDimensions(aspectRatio || "16:9", resolution || "1080p");
             const fps = 24;
             const num_frames = (duration || 5) * fps; 
@@ -85,19 +85,11 @@ export async function POST(req: Request) {
             );
         }
         
-        // ✅ 修复核心：寻找真正的 mp4 文件
-        let remoteUrl = "";
-        if (Array.isArray(videoOutput)) {
-            // 优先找 mp4
-            const videoFile = videoOutput.find(url => typeof url === 'string' && url.endsWith('.mp4'));
-            // 找不到 mp4 就拿第一个（万一模型变了）
-            remoteUrl = videoFile || videoOutput[0];
-        } else {
-            remoteUrl = videoOutput;
-        }
+        // 获取 URL 字符串
+        const remoteUrl = Array.isArray(videoOutput) ? videoOutput[0] : videoOutput;
+        console.log(`[API Video] Done. URL: ${remoteUrl}`);
 
-        console.log(`[API Video] Done. Final URL: ${remoteUrl}`);
-        // 返回纯文本 URL
+        // 直接返回纯文本 URL 字符串
         return new Response(String(remoteUrl));
     }
 
