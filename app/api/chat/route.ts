@@ -11,26 +11,8 @@ const replicate = new Replicate({
 
 export const runtime = "nodejs"; 
 export const maxDuration = 300; 
-export const dynamic = 'force-dynamic';
 
-function calculateDimensions(ratio: string) {
-    // 强制限制以保证 Zeroscope 稳定性
-    let width = 1024;
-    let height = 576;
-    const [wRatio, hRatio] = ratio.split(':').map(Number);
-    if (wRatio > hRatio) {
-        width = 1024;
-        height = Math.round(1024 * (hRatio / wRatio));
-    } else {
-        height = 1024;
-        width = Math.round(1024 * (wRatio / hRatio));
-    }
-    // 64倍数修正
-    width = Math.floor(width / 64) * 64;
-    height = Math.floor(height / 64) * 64;
-    return { width, height };
-}
-
+// 1. GET: 查询任务状态
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
@@ -43,75 +25,62 @@ export async function GET(req: Request) {
     }
 }
 
+// 2. POST: 提交任务
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, model, videoMode, image, numFrames, aspectRatio, negative_prompt } = body;
-    const lastMessage = messages[messages.length - 1];
-    const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
+    const { messages, model, prompt: videoPrompt, prompt_optimizer, first_frame_image } = body;
 
-    // --- 1. 视频任务 (异步) ---
+    // --- 🎬 视频任务：接入 Minimax Video-01 ---
     if (model === 'sora-v1' || model === 'veo-google') {
-        if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
-        let prediction;
-
-        // 🖼️ 图生视频 (使用 I2VGen-XL)
-        if (videoMode === 'img2video' && image) {
-            console.log("Creating I2VGen-XL task...");
-            prediction = await replicate.predictions.create({
-                version: "5821a338d0003352160bab388d4074bfc86387928505630247492c093a8d94c1", // 官方 Hash
-                input: {
-                    image: image,
-                    prompt: prompt || "High quality video", // I2VGen 支持提示词
-                    max_frames: 16,
-                    num_inference_steps: 50,
-                    guidance_scale: 9.0
-                }
-            });
-        } 
-        // 📝 文生视频 (使用 Zeroscope)
-        else {
-            console.log("Creating Zeroscope task...");
-            const { width, height } = calculateDimensions(aspectRatio || "16:9");
-            prediction = await replicate.predictions.create({
-                version: "9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
-                input: {
-                    prompt: prompt,
-                    negative_prompt: negative_prompt || "low quality, distorted",
-                    num_frames: numFrames || 24,
-                    width,
-                    height,
-                    fps: 24,
-                    num_inference_steps: 50
-                }
-            });
-        }
+        const prediction = await replicate.predictions.create({
+            // ✅ 使用 Replicate 官方 Minimax 最新 Hash
+            version: "7660676e1e3985a63974a9d2712812061405788bd98684d03612d7c71aa8d913",
+            input: {
+                prompt: videoPrompt || "A cinematic scene, high detail",
+                prompt_optimizer: prompt_optimizer ?? true,
+                first_frame_image: first_frame_image || undefined
+            }
+        });
         return NextResponse.json({ type: 'async_job', id: prediction.id, status: prediction.status });
     }
 
-    // --- 2. 绘图任务 (同步) ---
+    // --- 🎨 图片任务：Banana SDXL ---
     if (model === 'banana-sdxl') {
+        const lastPrompt = messages[messages.length-1].content.text;
         const output: any = await replicate.run(
           "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-          { input: { prompt: prompt, width: 1024, height: 1024, refine: "expert_ensemble_refiner" } }
+          { input: { prompt: lastPrompt, width: 1024, height: 1024 } }
         );
         return NextResponse.json({ url: output[0] });
     }
 
-    // --- 3. 文本聊天 (流式) ---
-    const geminiModel = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    // --- 🧠 聊天：修复 503 Overload 映射 ---
+    // 🚨 强制模型映射：将 UI 的 2.5 映射到可用的 1.5 Pro
+    let validModel = "gemini-1.5-flash";
+    if (model.includes("pro") || model.includes("2.5") || model.includes("exp")) {
+        validModel = "gemini-1.5-pro"; 
+    }
+
+    const geminiModel = genAI.getGenerativeModel({ model: validModel });
     const chat = geminiModel.startChat({
-      history: messages.slice(0, -1).map((m: any) => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: typeof m.content === 'string' ? m.content : m.content.text }],
-      })),
+        history: messages.slice(0, -1).map((m: any) => ({
+            role: m.role === 'user' ? 'user' : 'model',
+            parts: [{ text: typeof m.content === 'string' ? m.content : m.content.text }],
+        }))
     });
-    const result = await chat.sendMessageStream(prompt);
+
+    const chatContent = typeof messages[messages.length - 1].content === 'string' 
+        ? messages[messages.length - 1].content 
+        : messages[messages.length - 1].content.text;
+
+    const result = await chat.sendMessageStream(chatContent);
+
     const stream = new ReadableStream({
       async start(controller) {
         for await (const chunk of result.stream) {
-          const chunkText = chunk.text();
-          if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
+          const text = chunk.text();
+          if (text) controller.enqueue(new TextEncoder().encode(text));
         }
         controller.close();
       },
@@ -120,6 +89,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: "服务器负载中，请刷新重试" }, { status: 503 });
   }
 }

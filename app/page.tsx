@@ -12,7 +12,8 @@ import {
   Moon, Sun, FileText, CreditCard, Plus, MessageCircle, RefreshCw, Server, Trash2,
   FileSpreadsheet, Download, Maximize2, Lock as LockIcon, FileType, ThumbsUp, ThumbsDown,
   Wallet, PieChart, Video, Image as ImageIcon, Clock, Home as HomeIcon, LayoutGrid, Phone, ExternalLink,
-  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus
+  Settings2, Upload, Monitor, Smartphone, Square, Film, Type, ImagePlus, Clapperboard, Sparkle,
+  Headphones, Ticket, CreditCard as CardIcon
 } from "lucide-react"
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -30,18 +31,10 @@ const MODEL_PRICING: Record<string, number> = {
   "gemini-2.5-flash": 0.01,
   "gemini-2.5-pro": 0.05,
   "gemini-exp-1206": 0.10,
-  "sora-v1": 2.50,
+  "sora-v1": 2.50, // Minimax 高品质视频
   "veo-google": 1.80,
   "banana-sdxl": 0.20,
 };
-
-// --- 视频参数配置 ---
-const ASPECT_RATIOS = [
-    { label: "16:9", value: "16:9", icon: Monitor },
-    { label: "9:16", value: "9:16", icon: Smartphone },
-    { label: "1:1", value: "1:1", icon: Square },
-    { label: "21:9", value: "21:9", icon: Film },
-];
 
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
   if (!show) return null;
@@ -49,7 +42,6 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   let textColor = "text-green-400";
   if (type === 'loading') { Icon = Loader2; textColor = "text-blue-400"; }
   if (type === 'error') { Icon = X; textColor = "text-red-400"; }
-
   return (
     <div className="fixed bottom-6 left-6 z-[100] animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className="bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700">
@@ -60,11 +52,16 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// --- Thinking 组件 (完整保留) ---
+// --- Thinking 组件 ---
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
-    const plan = [{ title: "一、 需求语义深度解析", steps: ["提取关键词核心意图", "检索历史上下文关联"] }, { title: "二、 知识库实时广度检索", steps: ["跨域检索分布式知识节点", "验证数据准确性"] }, { title: "三、 响应架构多重建模", steps: ["逻辑推理路径模拟", "优化语言表达风格"] }, { title: "四、 生成结果合规性自检", steps: ["安全性策略实时匹配", "逻辑闭环终审校验"] }];
+    const plan = [
+        { title: "一、 需求语义深度解析", steps: ["提取关键词核心意图", "检索历史上下文关联"] },
+        { title: "二、 知识库实时广度检索", steps: ["跨域检索分布式知识节点", "验证数据准确性"] },
+        { title: "三、 响应架构多重建模", steps: ["逻辑推理路径模拟", "优化语言表达风格"] },
+        { title: "四、 生成结果合规性自检", steps: ["安全性策略实时匹配", "逻辑闭环终审校验"] }
+    ];
     useEffect(() => {
       let m1 = 0; let m2 = -1;
       const interval = setInterval(() => {
@@ -86,7 +83,7 @@ function Thinking({ modelName }: { modelName: string }) {
     );
   }
 
-// --- AuthPage 组件 (完整保留) ---
+// --- AuthPage 组件 ---
 function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot'>('login'); 
     const [account, setAccount] = useState("");
@@ -101,102 +98,67 @@ function AuthPage({ onLogin }: { onLogin: (u: any) => void }) {
     const [showConfirmPwd, setShowConfirmPwd] = useState(false);
     const [agreed, setAgreed] = useState(false);
     const [error, setError] = useState("");
-    const [failCount, setFailCount] = useState(0); 
-  
+
     const validateAccount = (val: string) => {
-      if (val === 'admin') return true; 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       const phoneRegex = /^1[3-9]\d{9}$/; 
-      if (emailRegex.test(val) || phoneRegex.test(val)) return true;
-      return false;
+      return emailRegex.test(val) || phoneRegex.test(val) || val === 'admin';
     };
-  
+
     const sendCode = async () => {
-      if (!validateAccount(account) || account === 'admin') { setError("请输入有效的手机号"); return; }
+      if (!validateAccount(account)) { setError("请输入有效的账号"); return; }
       setError(""); setCodeLoading(true);
       try {
         const res = await fetch('/api/send-sms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: account }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "发送失败");
-        alert("验证码已发送！"); setCount(60);
+        setCount(60);
         const timer = setInterval(() => setCount(v => { if(v<=1){clearInterval(timer); return 0} return v-1 }), 1000);
       } catch (e: any) { setError(e.message); } finally { setCodeLoading(false); }
     };
-  
+
     const handleAuth = async (e: any) => {
       e.preventDefault(); setError("");
-      if (!account) { setError("请输入账号"); return; }
-      if (authMode !== 'login' && !validateAccount(account)) { setError("账号格式不正确"); return; }
-      if (!password) { setError("请输入密码"); return; }
-      if (authMode === 'register' || authMode === 'forgot') {
-        if (authMode === 'register' && !nickname) { setError("请输入昵称"); return; }
-        if (password.length < 6) { setError("密码长度不能少于6位"); return; }
-        if (password !== confirmPassword) { setError("两次输入的密码不一致"); return; }
-        if (!verifyCode) { setError("请输入验证码"); return; }
-        if (authMode === 'register' && !agreed) { setError("请先阅读并同意服务条款"); return; }
-      }
+      if (!account || !password) { setError("请填写完整信息"); return; }
       setLoading(true);
-      let type = 'login'; if (authMode === 'register') type = 'register'; if (authMode === 'forgot') type = 'reset-password';
+      let type = authMode === 'register' ? 'register' : (authMode === 'forgot' ? 'reset-password' : 'login');
       try {
         const res = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, account, password, nickname, verifyCode }) });
         const data = await res.json();
-        if (!res.ok) {
-          if (type === 'login') {
-            const newCount = failCount + 1; setFailCount(newCount);
-            if (newCount >= 5) { alert("您已连续输错5次密码，请重置。"); setAuthMode('forgot'); setError("请验证身份"); setFailCount(0); setLoading(false); return; }
-          }
-          throw new Error(data.error || "请求失败");
-        }
-        if (authMode === 'forgot') { alert("密码重置成功！"); setAuthMode('login'); setPassword(""); setConfirmPassword(""); setLoading(false); return; }
-        localStorage.setItem("my_ai_user", JSON.stringify(data)); onLogin(data);
+        if (!res.ok) throw new Error(data.error || "认证失败");
+        if (authMode === 'forgot') { alert("重置成功"); setAuthMode('login'); }
+        else { localStorage.setItem("my_ai_user", JSON.stringify(data)); onLogin(data); }
       } catch (err: any) { setError(err.message); } finally { setLoading(false); }
     };
-  
-    let title = "欢迎回来"; let subtitle = "使用您的 Eureka 账号登录";
-    if (authMode === 'register') { title = "创建新账户"; subtitle = "开启您的 AI 探索之旅"; }
-    if (authMode === 'forgot') { title = "找回密码"; subtitle = "验证您的身份以重置密码"; }
-  
+
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <div className="flex items-center gap-3 mb-8"><div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center text-4xl shadow-2xl text-white font-bold">🧊</div><h1 className="text-5xl font-black tracking-tighter text-slate-900">Eureka</h1></div>
-        <Card className="w-full max-w-sm p-8 shadow-2xl border-none text-center bg-white rounded-[32px]">
-          <div className="text-left mb-6">
-            {authMode === 'forgot' && <button onClick={()=>setAuthMode('login')} className="mb-2 text-slate-400 hover:text-slate-600 flex items-center gap-1 text-xs font-bold"><ArrowLeft size={12}/> 返回登录</button>}
-            <h2 className="text-2xl font-black text-slate-900">{title}</h2>
-            <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
-          </div>
-          <form onSubmit={handleAuth} className="space-y-4 text-left">
-            {authMode === 'register' && (<div className="relative group"><User size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="设置昵称" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={nickname} onChange={e=>setNickname(e.target.value)} /></div>)}
-            <div className="relative group"><Mail size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="手机号 (仅限中国大陆)" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={account} onChange={e=>setAccount(e.target.value)} /></div>
-            {(authMode === 'register' || authMode === 'forgot') && (<div className="flex gap-2"><div className="relative flex-1 group"><Shield size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input placeholder="短信验证码" className="bg-slate-50 border-none h-12 pl-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} /></div><Button type="button" variant="outline" onClick={sendCode} disabled={count>0 || codeLoading} className="h-12 w-28 rounded-2xl border-slate-200 text-slate-600 font-bold">{codeLoading ? <Loader2 size={14} className="animate-spin"/> : (count>0 ? `${count}s后重发` : "获取验证码")}</Button></div>)}
-            <div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showPwd ? "text" : "password"} placeholder={authMode === 'login' ? "请输入密码" : "设置新密码"} className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={password} onChange={e=>setPassword(e.target.value)} /><button type="button" onClick={()=>setShowPwd(!showPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>
-            {(authMode === 'register' || authMode === 'forgot') && (<div className="relative group"><Lock size={16} className="absolute left-4 top-3.5 text-slate-400 group-focus-within:text-blue-600 transition-colors"/><Input type={showConfirmPwd ? "text" : "password"} placeholder="确认密码" className="bg-slate-50 border-none h-12 pl-10 pr-10 rounded-2xl focus-visible:ring-1 focus-visible:ring-blue-600 text-slate-900" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><button type="button" onClick={()=>setShowConfirmPwd(!showConfirmPwd)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">{showConfirmPwd ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div>)}
-            {authMode === 'login' && (<div className="flex justify-end mt-1"><button type="button" onClick={()=>{setAuthMode('forgot'); setError("");}} className="text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors">忘记密码？</button></div>)}
-            {error && <div className="text-[11px] text-red-500 font-bold flex items-center gap-1"><AlertCircle size={12}/> {error}</div>}
-            {authMode === 'register' && (<div className="flex items-center gap-2 mt-2"><div onClick={()=>setAgreed(!agreed)} className={`w-4 h-4 rounded border flex items-center justify-center cursor-pointer transition-colors ${agreed ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>{agreed && <Check size={10} className="text-white"/>}</div><span className="text-[10px] text-slate-400">我已阅读并同意 <span className="text-blue-600 cursor-pointer hover:underline">《Eureka服务条款》</span></span></div>)}
-            <Button className="w-full bg-slate-900 hover:bg-blue-600 h-12 mt-4 text-white font-bold border-none rounded-2xl shadow-xl shadow-slate-200 transition-all active:scale-95" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : (authMode === 'login' ? "安全登录" : (authMode === 'register' ? "立即注册" : "重置密码"))}</Button>
+        <Card className="w-full max-w-sm p-8 shadow-2xl border-none bg-white rounded-[32px]">
+          <form onSubmit={handleAuth} className="space-y-4">
+            <h2 className="text-2xl font-black text-slate-900">{authMode === 'login' ? '欢迎回来' : (authMode === 'register' ? '创建账户' : '找回密码')}</h2>
+            {authMode === 'register' && <Input placeholder="设置昵称" value={nickname} onChange={e=>setNickname(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>}
+            <Input placeholder="邮箱/手机号" value={account} onChange={e=>setAccount(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>
+            {authMode !== 'login' && <div className="flex gap-2"><Input placeholder="验证码" value={verifyCode} onChange={e=>setVerifyCode(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/><Button type="button" variant="outline" onClick={sendCode} disabled={count>0} className="h-12 rounded-xl">{count>0?`${count}s`:'获取'}</Button></div>}
+            <Input type="password" placeholder="密码" value={password} onChange={e=>setPassword(e.target.value)} className="rounded-xl h-12 bg-slate-50 border-none"/>
+            {error && <p className="text-xs text-red-500 font-bold">{error}</p>}
+            <Button className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white rounded-xl font-bold transition-all shadow-xl" disabled={loading}>{loading ? <Loader2 className="animate-spin"/> : '立即提交'}</Button>
+            <button type="button" onClick={()=>setAuthMode(authMode==='login'?'register':'login')} className="text-xs text-slate-400 w-full text-center hover:underline mt-2">切换登录/注册</button>
           </form>
-          {authMode !== 'forgot' && (<div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center gap-3">{authMode === 'register' && (<div className="flex items-center gap-2 px-4 py-1.5 bg-orange-50 text-orange-600 rounded-full border border-orange-100 shadow-sm animate-pulse"><PartyPopper size={14} className="animate-bounce" /><span className="text-[11px] font-bold">新用户注册即送体验金！</span></div>)}<button onClick={()=>{setAuthMode(authMode==='login'?'register':'login'); setError("");}} className="text-xs text-slate-500 hover:text-blue-600 font-bold transition-colors">{authMode === 'login' ? "没有账号？免费注册" : "已有账号？去登录"}</button></div>)}
         </Card>
-        <p className="mt-8 text-[10px] text-slate-300 font-mono">Eureka Secure Auth System © 2026</p>
       </div>
     );
   }
 
-// --- ✨ MediaGenerator (UI 重构版) ---
+// --- ✨ MediaGenerator (Minimax Video-01 重构版) ---
 function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image', onConsume: (amount: number, desc: string) => Promise<boolean>, showToast: any }) {
   const [prompt, setPrompt] = useState("");
-  const [negPrompt, setNegPrompt] = useState("low quality, bad quality, blurry, distorted"); 
+  const [optPrompt, setOptPrompt] = useState(true); 
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
-
-  // 视频专属参数
-  const [videoMode, setVideoMode] = useState<'text2video' | 'img2video'>('text2video');
   const [refImage, setRefImage] = useState<string | null>(null);
-  const [aspectRatio, setAspectRatio] = useState("16:9");
-  const [numFrames, setNumFrames] = useState(24);
 
-  // 压缩图片
+  // 强力压缩：512px, 0.6质量 (防止 413)
   const compressImage = (file: File): Promise<string> => {
       return new Promise((resolve) => {
           const reader = new FileReader();
@@ -207,20 +169,12 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               img.onload = () => {
                   const canvas = document.createElement('canvas');
                   const MAX_WIDTH = 512; 
-                  let width = img.width;
-                  let height = img.height;
-                  if (width > height) {
-                      if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                  } else {
-                      if (height > 512) { width *= 512 / height; height = 512; }
-                  }
-                  canvas.width = width;
-                  canvas.height = height;
+                  let width = img.width; let height = img.height;
+                  if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } }
+                  else { if (height > 512) { width *= 512 / height; height = 512; } }
+                  canvas.width = width; canvas.height = height;
                   const ctx = canvas.getContext('2d');
-                  if (ctx) {
-                      ctx.drawImage(img, 0, 0, width, height);
-                      resolve(canvas.toDataURL('image/jpeg', 0.6));
-                  }
+                  if (ctx) { ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.6)); }
               };
           };
       });
@@ -229,228 +183,122 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
-          showToast('loading', '正在处理图片...');
-          const compressedDataUrl = await compressImage(file);
-          setRefImage(compressedDataUrl);
-          showToast('success', '图片就绪');
+          showToast('loading', '正在压缩优化图片...');
+          try {
+              const compressedDataUrl = await compressImage(file);
+              setRefImage(compressedDataUrl);
+              showToast('success', '参考图就绪');
+          } catch (e) { showToast('error', '图片处理失败'); }
       }
   };
 
   const handleGenerate = async () => {
-    if (!prompt.trim() && !refImage) {
-        alert("请输入提示词或上传图片");
-        return;
-    }
-    const cost = 2.5; 
-    const desc = type === 'video' ? `生成视频 (${videoMode})` : "生成图片";
-
-    if (type === 'video') {
-       if(!confirm(`生成视频需 1-3 分钟，请勿关闭页面。确认消耗 $${cost}？`)) return;
-    }
-
-    const success = await onConsume(cost, desc);
+    if (!prompt.trim()) { alert("请输入提示词"); return; }
+    const cost = type === 'video' ? 2.5 : 0.2;
+    const success = await onConsume(cost, type === 'video' ? "生成 Sora 级高清视频" : "AI 绘画");
     if (!success) return;
 
-    setIsGenerating(true);
-    setResult(null);
+    setIsGenerating(true); setResult(null);
 
     try {
-      const payload: any = {
-        messages: [{ role: 'user', content: prompt }],
-        model: type === 'video' ? 'sora-v1' : 'banana-sdxl', 
-        aspectRatio,
-      };
-
-      if (type === 'video') {
-          payload.videoMode = videoMode; 
-          payload.image = videoMode === 'img2video' ? refImage : null;
-          payload.numFrames = numFrames; 
-          payload.negative_prompt = negPrompt;
-      }
-
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ 
+          model: type === 'video' ? 'sora-v1' : 'banana-sdxl', 
+          prompt: prompt,
+          prompt_optimizer: optPrompt,
+          first_frame_image: refImage 
+        }),
       });
 
-      const contentType = response.headers.get("content-type");
-      
-      if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (data.type === 'async_job') {
-              const jobId = data.id;
-              let jobStatus = data.status;
-              let finalOutput = null;
-
-              while (jobStatus !== 'succeeded' && jobStatus !== 'failed' && jobStatus !== 'canceled') {
-                  await new Promise(r => setTimeout(r, 4000));
-                  const statusRes = await fetch(`/api/chat?id=${jobId}`);
-                  const statusData = await statusRes.json();
-                  jobStatus = statusData.status;
-                  if (jobStatus === 'succeeded') finalOutput = statusData.output;
-                  else if (jobStatus === 'failed') throw new Error("AI 生成任务失败，请检查参数或稍后重试");
-              }
-              const url = Array.isArray(finalOutput) ? finalOutput[0] : finalOutput;
-              setResult(url);
-              showToast('success', '生成完成！');
-          } else if (data.url) {
-              setResult(data.url);
-              showToast('success', '图片生成完成');
-          } else {
-             alert(data.error || "请求失败");
+      const data = await response.json();
+      if (data.type === 'async_job') {
+          const jobId = data.id; let jobStatus = data.status; let finalOutput = null;
+          while (jobStatus !== 'succeeded' && jobStatus !== 'failed') {
+              await new Promise(r => setTimeout(r, 4000));
+              const statusRes = await fetch(`/api/chat?id=${jobId}`);
+              const statusData = await statusRes.json();
+              jobStatus = statusData.status;
+              if (jobStatus === 'succeeded') finalOutput = statusData.output;
+              if (jobStatus === 'failed') throw new Error("AI生成失败");
           }
-      } else {
-          const text = await response.text();
-          setResult(text);
-      }
-
-    } catch (e: any) {
-      alert(`错误：${e.message}`);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleForceDownload = () => {
-    if (result) window.open(result, '_blank');
+          setResult(Array.isArray(finalOutput) ? finalOutput[0] : finalOutput);
+          showToast('success', '制作完成');
+      } else if (data.url) { setResult(data.url); showToast('success', '生成成功'); }
+      else { throw new Error(data.error || "请求失败"); }
+    } catch (e: any) { alert(`错误：${e.message}`); } finally { setIsGenerating(false); }
   };
 
   return (
     <div className="flex flex-col md:flex-row h-full gap-6 p-6 max-w-7xl mx-auto">
        <div className="w-full md:w-1/3 flex flex-col gap-6 overflow-y-auto pr-2">
-          {type === 'video' && (
-              <div className="bg-slate-100 dark:bg-slate-900 p-1 rounded-xl flex">
-                  <button onClick={() => setVideoMode('text2video')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${videoMode==='text2video' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
-                      <Type size={14} className="inline mr-1"/> 文生视频
-                  </button>
-                  <button onClick={() => setVideoMode('img2video')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${videoMode==='img2video' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>
-                      <ImagePlus size={14} className="inline mr-1"/> 图生视频
-                  </button>
-              </div>
-          )}
-
-          <div className="space-y-4">
-             <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400">Prompt (正向提示词)</label>
-                <textarea 
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder={videoMode === 'img2video' ? "描述图片的动态，例如：火焰在燃烧，烟雾缭绕..." : "一只在未来城市上空飞行的无人机，4k高清，电影感..."}
-                    className="flex min-h-[80px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-blue-500 resize-none"
-                />
+          <div>
+            <h2 className="text-2xl font-black flex items-center gap-2"><Clapperboard className="text-blue-500"/> AI {type === 'video' ? 'Video' : 'Art'}</h2>
+            <p className="text-xs text-slate-400 font-mono tracking-tighter uppercase">Minimax-01 Sora-Grade Model</p>
+          </div>
+          <div className="space-y-6">
+             <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1"><Type size={12}/> 提示词 (PROMPT)</label>
+                <textarea value={prompt} onChange={(e)=>setPrompt(e.target.value)} placeholder="描述你想看到的画面..." className="flex min-h-[150px] w-full rounded-xl border border-slate-200 bg-white dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-blue-500 resize-none" />
              </div>
-             
-             <div className="space-y-1">
-                <label className="text-[10px] font-bold uppercase text-slate-400">Negative Prompt (负向提示词)</label>
-                <textarea 
-                    value={negPrompt}
-                    onChange={(e) => setNegPrompt(e.target.value)}
-                    className="flex min-h-[60px] w-full rounded-xl border border-slate-200 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-xs shadow-sm focus:ring-2 focus:ring-red-500 resize-none text-slate-500"
-                />
-             </div>
-
-             {type === 'video' && videoMode === 'img2video' && (
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Input Image (参考图)</label>
-                    <div className="relative group cursor-pointer">
-                        <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer"/>
-                        <div className={`border-2 border-dashed rounded-xl h-24 flex flex-col items-center justify-center transition-all ${refImage ? 'border-blue-500 bg-blue-50' : 'border-slate-300 hover:border-blue-400'}`}>
-                            {refImage ? <span className="text-xs text-blue-600 font-bold">图片已加载 ✅</span> : <span className="text-xs text-slate-400">点击上传图片 (Max 500KB)</span>}
-                        </div>
-                    </div>
-                </div>
-             )}
-
-             {type === 'video' && videoMode === 'text2video' && (
-                 <div className="grid grid-cols-2 gap-4">
-                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-slate-400">Aspect Ratio</label>
-                        <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value)} className="w-full h-9 rounded-lg border text-xs px-2 bg-transparent">
-                            {ASPECT_RATIOS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        </select>
-                     </div>
-                     <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-slate-400">Duration (Frames)</label>
-                        <select value={numFrames} onChange={(e) => setNumFrames(Number(e.target.value))} className="w-full h-9 rounded-lg border text-xs px-2 bg-transparent">
-                            <option value={24}>24帧 (约1秒) - 快速</option>
-                            <option value={48}>48帧 (约2秒) - 标准</option>
-                            <option value={72}>72帧 (约3秒) - 高质</option>
-                        </select>
-                     </div>
+             {type === 'video' && (
+                 <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-900 rounded-xl">
+                    <div className="flex items-center gap-2"><Sparkle size={14} className="text-yellow-500"/><span className="text-[10px] font-bold">提示词优化</span></div>
+                    <button onClick={()=>setOptPrompt(!optPrompt)} className={`w-10 h-5 rounded-full transition-all relative ${optPrompt?'bg-blue-600':'bg-slate-300'}`}><div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${optPrompt?'left-6':'left-1'}`}/></button>
                  </div>
              )}
-
-             <Button 
-                onClick={handleGenerate} 
-                disabled={isGenerating || (!prompt && !refImage)}
-                className={`w-full h-12 text-sm font-bold text-white shadow-lg transition-all ${isGenerating ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}
-             >
-                {isGenerating ? <Loader2 className="animate-spin mr-2"/> : (type==='video' ? <Video size={16} className="mr-2"/> : <ImageIcon size={16} className="mr-2"/>)}
-                {isGenerating ? "正在生成..." : "Generate"}
+             <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1"><ImagePlus size={12}/> 参考图 (可选)</label>
+                <div className="relative h-32 border-2 border-dashed rounded-xl overflow-hidden hover:border-blue-400 transition-colors flex items-center justify-center">
+                    <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 z-10 cursor-pointer"/>
+                    {refImage ? <img src={refImage} className="w-full h-full object-cover" /> : <div className="text-center text-slate-400 text-[10px]">点击上传参考图<br/>(自动压缩优化)</div>}
+                </div>
+             </div>
+             <Button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-xl shadow-xl transition-all">
+                {isGenerating?<Loader2 className="animate-spin mr-2"/>:<Send size={16} className="mr-2"/>}{isGenerating?"制作中 (约3分钟)...":"立即生成"}
              </Button>
           </div>
        </div>
-
-       <div className="flex-1 bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden relative flex flex-col items-center justify-center">
-            {result ? (
-                type === 'video' || result.endsWith('.mp4') ? (
-                    <div className="relative w-full h-full flex flex-col">
-                        <div className="absolute top-4 right-4 z-10"><Button size="sm" onClick={handleForceDownload} className="bg-white text-black hover:bg-slate-200"><Download size={14} className="mr-1"/> Download</Button></div>
-                        <video src={result} controls autoPlay loop className="w-full h-full object-contain bg-black"/>
-                    </div>
-                ) : (
-                    <div className="relative w-full h-full">
-                        <div className="absolute top-4 right-4 z-10"><Button size="sm" onClick={handleForceDownload} className="bg-white text-black hover:bg-slate-200"><Download size={14} className="mr-1"/> Download</Button></div>
-                        <img src={result} className="w-full h-full object-contain"/>
-                    </div>
-                )
-            ) : (
-                <div className="text-center text-slate-600">
-                    <div className="mb-4 flex justify-center opacity-50">{type==='video' ? <Video size={64}/> : <ImageIcon size={64}/>}</div>
-                    <p className="text-sm">Ready to generate</p>
-                </div>
-            )}
-            
-            {isGenerating && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-20">
-                    <Loader2 size={48} className="text-blue-500 animate-spin mb-4"/>
-                    <p className="text-blue-400 font-bold animate-pulse">AI is working...</p>
-                    <p className="text-xs text-slate-500 mt-2">预计耗时 1-3 分钟</p>
-                </div>
-            )}
+       <div className="flex-1 bg-slate-950 rounded-[32px] border border-slate-800 overflow-hidden relative flex flex-col shadow-2xl">
+          <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Output Preview</div>
+          <div className="flex-1 flex items-center justify-center p-4">
+             {result ? (
+                 result.endsWith('.mp4') ? <video src={result} controls autoPlay loop className="max-w-full max-h-full rounded-xl shadow-2xl" /> : <img src={result} className="max-w-full max-h-full rounded-xl object-contain shadow-2xl" />
+             ) : isGenerating ? (
+                 <div className="text-center animate-pulse"><Loader2 size={40} className="text-blue-500 mx-auto mb-4 animate-spin"/><p className="text-xs text-blue-400 font-black uppercase tracking-widest">AI Processing...</p></div>
+             ) : (
+                 <div className="text-center opacity-20"><Clapperboard size={60} className="mx-auto mb-2"/><p className="text-xs font-bold tracking-widest uppercase">Ready to Action</p></div>
+             )}
+          </div>
+          {result && <Button onClick={()=>window.open(result,'_blank')} className="absolute bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white gap-2 font-bold px-4 h-10 rounded-full shadow-2xl transition-all"><Download size={14}/> 下载文件</Button>}
        </div>
     </div>
   );
 }
 
-// --- Home 组件主体 ---
+// --- Home 组件 (完整逻辑恢复) ---
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [chatList, setChatList] = useState<any[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
-  
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
-  const [profileTab, setProfileTab] = useState('wallet');
-
   const [messages, setMessages] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [model, setModel] = useState("gemini-2.5-flash");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  
   const [previewTableData, setPreviewTableData] = useState<string | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewDocData, setPreviewDocData] = useState<string | null>(null);
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
-  const [toastState, setToastState] = useState<{show: boolean, type: 'loading'|'success'|'error', msg: string}>({ show: false, type: 'loading', msg: '' });
+  const [toastState, setToastState] = useState({ show: false, type: 'loading' as any, msg: '' });
 
-  // Admin states
-  const [selectedAdminUser, setSelectedAdminUser] = useState<any>(null);
+  // Admin & Support Logic
   const [adminUsers, setAdminUsers] = useState<any[]>([]);
   const [adminUserTx, setAdminUserTx] = useState<any[]>([]);
   const [isAdminCardsOpen, setIsAdminCardsOpen] = useState(false); 
@@ -469,187 +317,191 @@ export default function Home() {
   const parseMessageContent = (content: any) => {
     let rawText = typeof content === 'string' ? content : content.text;
     if (!rawText) return { cleanText: '', suggestions: [] };
-    const START_TAG = '___RELATED___';
-    const parts = rawText.split(START_TAG);
+    const parts = rawText.split('___RELATED___');
     const cleanText = parts[0]; 
     let suggestions: string[] = [];
-    if (parts[1]) { 
-        suggestions = parts[1].split('|').map((q: string) => q.trim()).filter((q: string) => q.length > 0);
-    }
+    if (parts[1]) suggestions = parts[1].split('|').map((q: string) => q.trim()).filter((q: string) => q.length > 0);
     return { cleanText, suggestions };
   };
 
   useEffect(() => { 
     const u = localStorage.getItem("my_ai_user"); 
-    if(u) { 
-        const p = JSON.parse(u); 
-        setUser(p); 
-        syncUserData(p.id, p.role);
-        fetchChatList(p.id); 
-    }
-    const savedTheme = localStorage.getItem("theme");
-    if (savedTheme === 'dark') setIsDarkMode(true);
+    if(u) { const p = JSON.parse(u); setUser(p); syncUserData(p.id, p.role); fetchChatList(p.id); }
     if (typeof window !== 'undefined' && window.innerWidth < 768) setIsSidebarOpen(false);
   }, []);
 
-  const showToast = (type: 'loading' | 'success' | 'error', msg: string) => { setToastState({ show: true, type, msg }); setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000); };
-  const handleDownloadExcel = (csvData: string) => { showToast('loading', '正在生成 Excel...'); setTimeout(() => { try { const wb = XLSX.read(csvData, { type: 'string' }); XLSX.writeFile(wb, `eureka_data_${new Date().getTime()}.xlsx`); showToast('success', 'Excel 下载已开始'); } catch (e) { showToast('loading', '下载失败，请重试'); } }, 1500); };
-  const handleDownloadWord = (text: string) => { showToast('loading', '正在生成 Word 文档...'); setTimeout(() => { try { const doc = new Document({ sections: [{ properties: {}, children: text.split('\n').map(line => new Paragraph({ children: [new TextRun(line)], spacing: { after: 200 } })), }], }); Packer.toBlob(doc).then(blob => { saveAs(blob, `eureka_doc_${new Date().getTime()}.docx`); showToast('success', 'Word 下载已开始'); }); } catch (e) { showToast('loading', '下载失败'); } }, 1500); };
-  const handlePreviewDoc = (text: string) => { showToast('loading', '正在渲染文档...'); setTimeout(() => { setPreviewDocData(text); setIsDocPreviewOpen(true); showToast('success', '渲染完成'); }, 800); };
-  const handlePreviewTable = (csvData: string) => { showToast('loading', '正在加载预览...'); setTimeout(() => { setPreviewTableData(csvData); setIsPreviewOpen(true); showToast('success', '加载完毕'); }, 1000); };
+  const showToast = (type: any, msg: string) => { setToastState({ show: true, type, msg }); setTimeout(() => setToastState(prev => ({ ...prev, show: false })), 3000); };
+  
+  const syncUserData = async (uid: string, role: string) => { 
+    try { 
+        const res = await fetch(`/api/sync?id=${uid}&role=${role}`); 
+        const data = await res.json(); 
+        if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); }
+        if (role === 'admin' && data.users) setAdminUsers(data.users);
+    } catch (e) {} 
+  };
 
-  const fetchChatList = async (uid: string) => { try { const res = await fetch(`/api/history?userId=${uid}`); const data = await res.json(); if(data.chats) setChatList(data.chats); } catch(e) { console.error("Fetch history failed", e); } };
-  const loadChat = async (chatId: string) => { if (isLoading) return; setCurrentChatId(chatId); setMessages([]); if (window.innerWidth < 768) setIsSidebarOpen(false); setActiveTab('home'); try { const res = await fetch(`/api/history?chatId=${chatId}`, { method: 'PUT' }); const data = await res.json(); if (data.chat && data.chat.messages) { setMessages(data.chat.messages); } } catch(e) { console.error("Load chat failed", e); } };
-  const startNewChat = () => { if (isLoading) return; setCurrentChatId(null); setMessages([]); if (window.innerWidth < 768) setIsSidebarOpen(false); setActiveTab('home'); };
-  const deleteChat = async (e: any, chatId: string) => { e.stopPropagation(); if(!confirm("确定删除这条记录吗？")) return; await fetch(`/api/history?chatId=${chatId}`, { method: 'DELETE' }); if (currentChatId === chatId) startNewChat(); if (user) fetchChatList(user.id); };
-  const handleLogout = () => { localStorage.removeItem("my_ai_user"); setUser(null); setIsProfileOpen(false); setMessages([]); setChatList([]); setCurrentChatId(null); };
+  const fetchChatList = async (uid: string) => { try { const res = await fetch(`/api/history?userId=${uid}`); const data = await res.json(); setChatList(data.chats || []); } catch(e) {} };
+  
+  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => {
+      if(!user) return false; if (user.role === 'admin') return true;
+      if(type === 'consume' && parseFloat(user.balance) < amount) { alert(`余额不足，需要 $${amount}`); return false; }
+      const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) });
+      const data = await res.json();
+      if(res.ok) { setUser((p:any)=>({...p, balance: data.balance})); syncUserData(user.id, user.role); return true; }
+      return false;
+  };
 
-  const syncUserData = async (uid: string, role: string) => { try { const res = await fetch(`/api/sync?id=${uid}&role=${role}`); const data = await res.json(); if (data.balance) { setUser((prev:any) => ({ ...prev, balance: data.balance })); setTransactions(data.transactions || []); } if (role === 'admin' && data.users) setAdminUsers(data.users); } catch (e) { console.error("Sync error:", e); } };
-  const handleTX = async (type: 'topup' | 'consume', amount: number, desc: string) => { if(!user) return false; if (user.role === 'admin') return true; const cur = parseFloat(user.balance); if(type === 'consume' && cur < amount) { alert(`余额不足！需要 $${amount}`); return false; } try { const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, type, amount, description: desc }) }); const data = await res.json(); if (!res.ok) { alert(data.error); return false; } setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); return true; } catch (e) { alert("网络错误"); return false; } };
-  const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); localStorage.setItem("theme", newMode ? 'dark' : 'light'); };
+  const loadChat = async (id: string) => { 
+    if (isLoading) return; setCurrentChatId(id);
+    const res = await fetch(`/api/history?chatId=${id}`, { method: 'PUT' });
+    const data = await res.json(); setMessages(data.chat?.messages || []);
+    if(window.innerWidth < 768) setIsSidebarOpen(false); setActiveTab('home');
+  };
+
+  const handleChatSubmit = async (text: string, attachments: File[] = [], modelId: string = "gemini-2.5-flash") => {
+    const cost = MODEL_PRICING[modelId] || 0.01;
+    if (!await handleTX('consume', cost, `对话: ${text.slice(0,10)}`)) return;
+    setIsLoading(true); setModel(modelId);
+    const newMsg = { role: 'user', content: { text } }; const newHistory = [...messages, newMsg];
+    setMessages(newHistory);
+    try {
+      const response = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ messages: newHistory.slice(-10), model: modelId }) });
+      const reader = response.body?.getReader(); const decoder = new TextDecoder();
+      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
+      let fullText = "";
+      while (true) { 
+          const { done, value } = await reader?.read()!; if (done) break; 
+          const chunk = decoder.decode(value); fullText += chunk;
+          setMessages(prev => { const msgs = [...prev]; msgs[msgs.length-1].content = fullText; return msgs; }); 
+      }
+      await fetch('/api/history', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: [...newHistory, {role:'assistant', content: fullText}], title: currentChatId ? undefined : text.slice(0,30) }) }).then(res=>res.json()).then(d=>{if(d.chat){setCurrentChatId(d.chat.id); fetchChatList(user.id);}});
+    } catch(e) { alert("对话请求失败"); } finally { setIsLoading(false); }
+  };
+
+  const startNewChat = () => { setCurrentChatId(null); setMessages([]); setActiveTab('home'); };
+  const deleteChat = async (e:any, id:string) => { e.stopPropagation(); if(confirm("确定删除？")){ await fetch(`/api/history?chatId=${id}`, {method:'DELETE'}); fetchChatList(user.id); if(currentChatId===id) startNewChat(); }};
+  const toggleTheme = () => { const n = !isDarkMode; setIsDarkMode(n); localStorage.setItem("theme", n?'dark':'light'); };
+
+  const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) {} };
+  const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
+  
+  // ✅ 修复 redeemCard 语法报错：完整展开 then/catch
+  const redeemCard = async () => { 
+      const codeInput = document.getElementById('card-input') as HTMLInputElement;
+      const code = codeInput?.value; 
+      if(!code) return alert("请输入卡密"); 
+      try { 
+          const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); 
+          const data = await res.json(); 
+          if(data.success) { 
+              alert(`充值成功！到账 $${data.amount}`); 
+              setUser((prev:any) => ({ ...prev, balance: data.balance })); 
+              syncUserData(user.id, user.role); 
+              setIsRechargeOpen(false); 
+          } else { 
+              alert(data.error); 
+          } 
+      } catch(e) { 
+          alert("请求失败"); 
+      } 
+  };
 
   useEffect(() => { let interval: any; if (user && (isSupportOpen || (isAdminSupportOpen && activeSessionUser))) { const fetchMsg = async () => { const uid = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { const res = await fetch(`/api/support?action=history&userId=${uid}`); const data = await res.json(); if (data.messages) { setSupportMessages(data.messages); if (supportScrollRef.current) supportScrollRef.current.scrollIntoView({ behavior: "smooth" }); } } catch(e) {} }; fetchMsg(); interval = setInterval(fetchMsg, 3000); } return () => clearInterval(interval); }, [user, isSupportOpen, isAdminSupportOpen, activeSessionUser]);
   const fetchSupportSessions = async () => { try { const res = await fetch('/api/support?action=list'); const data = await res.json(); if(data.sessions) setSupportSessions(data.sessions); } catch(e) {} };
-  const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); const res = await fetch(`/api/support?action=history&userId=${targetUserId}`); const data = await res.json(); if (data.messages) setSupportMessages(data.messages); } catch(e) { alert("发送失败"); } };
-  const fetchCards = async () => { try { const res = await fetch('/api/admin/cards'); const data = await res.json(); if(data.cards) setCards(data.cards); } catch(e) { console.error(e); } };
-  const generateCards = async () => { try { const res = await fetch('/api/admin/cards', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cardConfig) }); const data = await res.json(); if(data.success) { alert(`成功生成 ${data.count} 张卡密！`); fetchCards(); } else alert(data.error); } catch(e) { alert("生成失败"); } };
-  const redeemCard = async () => { const code = (document.getElementById('card-input') as HTMLInputElement).value; if(!code) return alert("请输入卡密"); try { const res = await fetch('/api/card/redeem', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, code }) }); const data = await res.json(); if(data.success) { alert(`充值成功！到账 $${data.amount}`); setUser((prev:any) => ({ ...prev, balance: data.balance })); syncUserData(user.id, user.role); setIsRechargeOpen(false); } else { alert(data.error); } } catch(e) { alert("网络请求失败"); } };
+  const sendSupportMessage = async () => { if(!supportInput.trim()) return; const targetUserId = (user.role === 'admin' && activeSessionUser) ? activeSessionUser : user.id; try { await fetch('/api/support', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: targetUserId, content: supportInput, isAdmin: user.role === 'admin' }) }); setSupportInput(""); } catch(e) { alert("发送失败"); } };
 
-  const handleSendSimple = async (text: string) => { await handleChatSubmit(text, [], model, "general"); };
-  const handleChatSubmit = async (text: string, attachments: File[] = [], modelId: string = "gemini-2.5-flash", roleId: string = "general") => {
-    setModel(modelId);
-    const desc = `使用 ${modelId}: ${text.slice(0, 15)}${text.length > 15 ? '...' : ''}`;
-    const cost = MODEL_PRICING[modelId] || 0.01;
-    const success = await handleTX('consume', cost, desc);
-    if (!success) return; 
-    setIsLoading(true);
-    const processedImages: string[] = []; const fileInfos: {name: string, type: string}[] = []; 
-    if (attachments.length > 0) {
-      // (Simplified file logic)
-    }
-    
-    let appendedText = text;
-    const newUserMsg = { role: 'user', content: { text: appendedText, images: processedImages, fileInfos: fileInfos } };
-    const newHistory = [...messages, newUserMsg];
-    setMessages(newHistory); 
-    const recentHistory = newHistory.slice(-10);
-    const historyForAi = recentHistory.map(m => ({ role: m.role, content: { text: (m === newUserMsg) ? appendedText : (typeof m.content === 'string' ? m.content : m.content.text), images: (m.content as any).images || [] } }));
-    try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: historyForAi, model: modelId, persona: roleId }), });
-      
-      const reader = response.body?.getReader(); const decoder = new TextDecoder();
-      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-      let fullResponseText = "";
-      while (true) { const { done, value } = await reader?.read()!; if (done) break; const chunk = decoder.decode(value); fullResponseText += chunk; setMessages(prev => { const newMsgs = [...prev]; const lastMsg = newMsgs[newMsgs.length - 1]; lastMsg.content += chunk; return newMsgs; }); }
-      const finalMessages = [...newHistory, { role: 'assistant', content: fullResponseText }];
-      await fetch('/api/history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, chatId: currentChatId, messages: finalMessages, title: currentChatId ? undefined : text.slice(0, 30) }) }).then(res => res.json()).then(data => { if (data.chat) { setCurrentChatId(data.chat.id); fetchChatList(user.id); }});
-    } catch (e) { alert("发送失败"); } finally { setIsLoading(false); }
+  const handleDownloadExcel = (csv: string) => { const wb = XLSX.read(csv, { type: 'string' }); XLSX.writeFile(wb, `eureka_${Date.now()}.xlsx`); };
+
+  // ✅ 重构渲染逻辑：解决 Line 484-500 的 JSX 嵌套报错
+  const renderMainContent = () => {
+      switch(activeTab) {
+          case 'home':
+              return (
+                 <div className="h-full flex flex-col">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+                       <div className="max-w-3xl mx-auto">
+                          {messages.length === 0 && (<div className="py-20 text-center animate-in zoom-in duration-700"><div className="w-24 h-24 rounded-[36px] bg-slate-900 text-white flex items-center justify-center text-6xl mx-auto mb-8 shadow-2xl font-bold">🧊</div><h2 className="text-4xl font-black tracking-tighter mb-2">Welcome to Eureka</h2><p className="text-slate-400 text-sm">您的全能创意 AI 助手</p></div>)}
+                          {messages.map((m,i)=>{ const { cleanText } = parseMessageContent(m.content); return (<div key={i} className={`flex gap-3 mb-6 ${m.role==='user'?'justify-end':'justify-start'} group animate-in slide-in-from-bottom-2`}>{m.role!=='user' && <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs shrink-0 shadow-lg">🧊</div>}<div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white shadow-blue-500/20' : 'bg-slate-100 dark:bg-slate-900 border dark:border-slate-800'}`}><div className="prose prose-sm dark:prose-invert leading-relaxed"><ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText}</ReactMarkdown></div></div></div>)})}
+                          {isLoading && <Thinking modelName={currentModelName} />}
+                          <div ref={scrollRef} className="h-2" />
+                       </div>
+                    </div>
+                    <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white dark:from-slate-950 p-4 pt-10 z-10`}><div className="max-w-3xl mx-auto"><ChatInput onSend={handleChatSubmit} disabled={isLoading} /></div></div>
+                 </div>
+              );
+          case 'video':
+              // 修复：传入箭头函数以匹配类型
+              return <MediaGenerator type="video" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
+          case 'image':
+              // 修复：传入箭头函数以匹配类型
+              return <MediaGenerator type="image" onConsume={(a, d) => handleTX('consume', a, d)} showToast={showToast} />;
+          case 'contact':
+              return (
+                  <div className="h-full flex flex-col p-6 max-w-3xl mx-auto">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 flex-1 flex flex-col overflow-hidden shadow-xl">
+                        <div className="p-4 border-b bg-slate-50 dark:bg-slate-950/50 font-bold flex items-center gap-2"><Headphones size={18}/> 在线客服</div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            {supportMessages.map((m:any,i)=>(<div key={i} className={`flex ${m.sender==='user'?'justify-end':'justify-start'}`}><div className={`px-4 py-2 rounded-2xl text-sm ${m.sender==='user'?'bg-blue-600 text-white':'bg-slate-100 dark:bg-slate-800'}`}>{m.content}</div></div>))}
+                        </div>
+                        <div className="p-4 border-t flex gap-2"><Input value={supportInput} onChange={e=>setSupportInput(e.target.value)} placeholder="输入您的问题..." className="flex-1"/><Button onClick={sendSupportMessage}><Send size={16}/></Button></div>
+                    </div>
+                  </div>
+              );
+          default:
+              return (
+                  <div className="h-full flex items-center justify-center opacity-30 flex-col"><LayoutGrid size={64} className="mb-4"/><p className="text-xl font-black italic tracking-widest uppercase">Module Under Construction</p></div>
+              );
+      }
   };
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
 
   if (!user) return <AuthPage onLogin={(u)=>{ setUser(u); syncUserData(u.id, u.role); fetchChatList(u.id); }} />;
 
-  const isWithin24Hours = (timeStr: string) => { try { const time = new Date(timeStr).getTime(); const now = new Date().getTime(); return (now - time) < 24 * 60 * 60 * 1000; } catch (e) { return false; } };
-
-  const NAV_ITEMS = [
-    { id: 'home', label: '首页', icon: HomeIcon },
-    { id: 'video', label: '视频', icon: Video },
-    { id: 'image', label: '图片', icon: ImageIcon },
-    { id: 'promo', label: '推广', icon: Sparkles },
-    { id: 'custom', label: '定制', icon: LayoutGrid },
-    { id: 'contact', label: '联系我们', icon: Phone },
-  ];
-
   return (
-    <div className={`flex h-screen overflow-hidden transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-white text-slate-900'}`}>
+    <div className={`flex h-screen overflow-hidden transition-all duration-500 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-900'}`}>
       <Toast show={toastState.show} type={toastState.type} message={toastState.msg} />
       
-      <div className={`${(isSidebarOpen && activeTab === 'home') ? 'w-64' : 'w-0'} h-full flex-shrink-0 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 transition-all duration-300 flex flex-col overflow-y-auto relative z-20`}>
-         <div className="p-4 flex flex-col gap-2">
-            <div className="flex items-center gap-2 mb-2 font-black text-xl tracking-tighter px-2"><div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] shadow-sm ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-slate-900 text-white'}`}>🧊</div><span>Eureka</span></div>
-            <Button onClick={startNewChat} className="w-full justify-start gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md"><Plus size={16}/> 开启新对话</Button>
+      {/* Sidebar */}
+      <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} bg-slate-50 dark:bg-slate-900 border-r transition-all duration-300 flex flex-col relative z-20 overflow-hidden`}>
+         <div className="p-4 flex flex-col gap-4 shrink-0">
+            <div className="text-xl font-black flex items-center gap-2 px-2"><div className="w-6 h-6 bg-slate-900 text-white flex items-center justify-center rounded-lg text-xs font-bold">🧊</div>Eureka</div>
+            <Button onClick={startNewChat} className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg"><Plus size={16}/> 开启新对话</Button>
          </div>
-         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <div className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">历史记录</div>
-            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group flex items-center justify-between p-3 rounded-xl text-xs cursor-pointer transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 font-bold' : 'hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500'}`}><div className="truncate flex-1 flex items-center gap-2"><MessageCircle size={12}/> {chat.title || '无标题'}</div><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 p-1"><Trash2 size={12}/></button></div>))}
+         <div className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
+            <div className="px-4 py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">历史记录</div>
+            {chatList.map(chat => (<div key={chat.id} onClick={()=>loadChat(chat.id)} className={`group p-3 rounded-xl text-xs cursor-pointer truncate flex justify-between items-center transition-all ${currentChatId === chat.id ? 'bg-blue-100 text-blue-700 font-bold shadow-sm' : 'hover:bg-slate-200'}`}><span>{chat.title || '无标题'}</span><button onClick={(e)=>deleteChat(e, chat.id)} className="opacity-0 group-hover:opacity-100 text-red-500 transition-opacity"><Trash2 size={12}/></button></div>))}
          </div>
-         {/* ✅ 修复：z-50 */}
-         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-50">
-             <div onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 cursor-pointer p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">{user.nickname[0]}</div>
-                <div className="flex-1 overflow-hidden">
-                    <div className="font-bold text-xs truncate">{user.nickname}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">专业版用户</div>
-                </div>
-             </div>
+         <div className="p-4 border-t border-slate-200 dark:border-slate-800 mt-auto relative z-[60] bg-inherit">
+             <button onClick={()=>setIsProfileOpen(true)} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-all text-left">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs shadow-md">{user.nickname?.[0]}</div>
+                <div className="flex-1 truncate"><div className="font-bold text-xs truncate">{user.nickname}</div><div className="text-[10px] text-slate-400 uppercase font-black">PRO Account</div></div>
+             </button>
          </div>
       </div>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-          <div className={`h-16 flex items-center justify-between px-6 border-b shrink-0 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-white border-slate-100'}`}>
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-inherit">
+          <header className="h-16 flex items-center justify-between px-6 border-b z-30 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md">
               <div className="flex items-center gap-4">
-                  {activeTab === 'home' && (
-                    <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500"><Server size={18} className="rotate-90"/></button>
-                  )}
+                  <button onClick={()=>setIsSidebarOpen(!isSidebarOpen)} className="p-2 hover:bg-slate-100 rounded-lg transition-colors"><Server size={18} className="rotate-90 text-slate-400"/></button>
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
-                      {NAV_ITEMS.map((item) => (
-                          <button 
-                            key={item.id}
-                            onClick={() => setActiveTab(item.id as TabType)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === item.id ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-300'}`}
-                          >
-                             <item.icon size={14}/>
-                             {item.label}
-                          </button>
+                      {[ { id: 'home', label: '首页', icon: HomeIcon }, { id: 'video', label: '视频', icon: Video }, { id: 'image', label: '图片', icon: ImageIcon }, { id: 'contact', label: '客服', icon: Headphones } ].map((item:any) => (
+                          <button key={item.id} onClick={()=>setActiveTab(item.id)} className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${activeTab === item.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}><item.icon size={14}/>{item.label}</button>
                       ))}
                   </div>
               </div>
-              <div className="flex items-center gap-2">
-                  <button onClick={toggleTheme} className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${isDarkMode ? 'bg-slate-800 text-yellow-400' : 'bg-slate-100 text-slate-600'}`}>{isDarkMode ? <Sun size={16} /> : <Moon size={16} />}</button>
-              </div>
-          </div>
+              <Button variant="ghost" onClick={toggleTheme} className="w-9 h-9 rounded-full p-0 transition-colors">{isDarkMode ? <Sun size={18} className="text-yellow-400"/> : <Moon size={18}/>}</Button>
+          </header>
 
-          <div className="flex-1 overflow-hidden relative">
-              {activeTab === 'home' && (
-                 <div className="h-full flex flex-col relative">
-                     <div className="flex-1 overflow-y-auto px-4 sm:px-6 pt-4 pb-32">
-                        <div className="max-w-3xl mx-auto space-y-6">
-                            {messages.length === 0 && (<div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500"><div className={`w-20 h-20 rounded-3xl flex items-center justify-center text-5xl mb-6 shadow-2xl shadow-blue-500/20 ${isDarkMode ? 'bg-gradient-to-br from-slate-800 to-slate-900' : 'bg-gradient-to-br from-slate-900 to-slate-800'} text-white`}>🧊</div><h2 className="text-3xl font-black mb-2 tracking-tight">Welcome to Eureka</h2><p className="text-slate-400 mb-8 text-sm">您的全能 AI 创意助手</p><div className="grid grid-cols-2 gap-3 w-full max-w-lg">{["分析上海一周天气", "写一段科幻小说", "检查 Python 代码", "制定健康食谱"].map((txt, idx) => (<button key={idx} onClick={() => handleSendSimple(txt)} className={`p-4 border rounded-2xl text-xs font-bold transition-all text-left ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800 hover:border-blue-500' : 'bg-white border-slate-100 hover:bg-slate-50 hover:border-blue-200'}`}>{txt}</button>))}</div></div>)}
-                            {messages.map((m, i) => { const { cleanText, suggestions } = parseMessageContent(m.content); return (<div key={i} className={`flex gap-3 ${m.role==='user'?'justify-end':'justify-start'} group`}>{m.role!=='user' && <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center text-xs shrink-0">🧊</div>}<div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${m.role==='user' ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-900 border border-slate-800' : 'bg-white border border-slate-100')}`}><div className={`prose prose-sm max-w-none ${isDarkMode ? 'prose-invert' : ''}`}><ReactMarkdown remarkPlugins={[remarkGfm]}>{cleanText}</ReactMarkdown></div>{suggestions.length > 0 && <div className="mt-4 pt-3 border-t border-slate-200/20 grid gap-3"><div className="flex items-center gap-2 text-[10px] font-black text-slate-400 tracking-widest uppercase"><Sparkles size={12} className="text-blue-500 fill-blue-500"/> 您可能感兴趣</div><div className="flex flex-wrap gap-2">{suggestions.map((q, idx) => (<button key={idx} onClick={() => handleSendSimple(q)} className="group flex items-center gap-1.5 px-4 py-2 bg-slate-50/50 hover:bg-blue-50/80 dark:bg-slate-800 dark:hover:bg-blue-900/30 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-full text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 hover:border-blue-200 active:scale-95 text-left"><span>{q}</span><ArrowRight size={10} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all"/></button>))}</div></div>}</div></div>); })}
-                            {isLoading && <Thinking modelName={currentModelName} />}
-                            <div ref={scrollRef} className="h-4" />
-                        </div>
-                     </div>
-                     <div className={`fixed bottom-0 right-0 transition-all duration-300 ${isSidebarOpen ? 'left-64' : 'left-0'} bg-gradient-to-t from-white via-white to-transparent dark:from-slate-950 dark:via-slate-950 pb-4 pt-10 z-10 px-4`}>
-                        <div className="max-w-3xl mx-auto"><ChatInput onSend={handleChatSubmit} disabled={isLoading} allowedCategories={['text']} /></div>
-                     </div>
-                 </div>
-              )}
-
-              {activeTab === 'video' && (
-                 <div className="h-full overflow-y-auto">
-                    <MediaGenerator type="video" onConsume={(amount, desc) => handleTX('consume', amount, desc)} showToast={showToast} />
-                 </div>
-              )}
-
-              {activeTab === 'image' && (
-                 <div className="h-full overflow-y-auto">
-                    <MediaGenerator type="image" onConsume={(amount, desc) => handleTX('consume', amount, desc)} showToast={showToast} />
-                 </div>
-              )}
-
-              {['promo', 'custom', 'contact'].includes(activeTab) && (
-                 <div className="h-full flex flex-col items-center justify-center opacity-40">
-                    <div className="text-6xl mb-4">🚧</div>
-                    <h3 className="text-xl font-bold">功能开发中</h3>
-                    <p className="text-sm">该模块尚未开放，敬请期待。</p>
-                 </div>
-              )}
-          </div>
-          
-          <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] flex flex-col p-0 rounded-2xl border-none overflow-hidden"><div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center shrink-0"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet size={18} className="text-green-600"/> 表格预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || '')} className="h-8 bg-green-600 hover:bg-green-700 text-white border-none gap-2"><Download size={14}/> 下载 Excel</Button></div><div className="flex-1 overflow-auto p-0 bg-white dark:bg-slate-950 relative">{previewTableData && (<div className="absolute inset-0 overflow-auto"><table className="min-w-full text-sm text-left border-collapse"><thead className="bg-slate-100 dark:bg-slate-800 text-xs uppercase text-slate-500 sticky top-0 z-20 shadow-sm"><tr>{previewTableData.split('\n')[0].split(',').map((h, i) => (<th key={i} className="px-6 py-4 border-b border-r last:border-r-0 border-slate-200 dark:border-slate-700 font-bold whitespace-nowrap bg-slate-100 dark:bg-slate-800">{h}</th>))}</tr></thead><tbody>{previewTableData.split('\n').slice(1).filter(r=>r.trim()).map((row, i) => (<tr key={i} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">{row.split(',').map((cell, j) => (<td key={j} className="px-6 py-3 border-r last:border-r-0 border-slate-200 dark:border-slate-700 whitespace-nowrap min-w-[120px] max-w-[400px] truncate">{cell}</td>))}</tr>))}</tbody></table></div>)}</div></DialogContent></Dialog>
-          {/* 其他 Dialog 略，保持原样 */}
+          <main className="flex-1 overflow-hidden relative">
+              {renderMainContent()}
+          </main>
       </div>
+
+      <Dialog open={isProfileOpen} onOpenChange={setIsProfileOpen}><DialogContent className="max-w-md rounded-[32px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-950"><div className="p-8 space-y-6"><div className="flex items-center gap-4"><div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-black shadow-lg">{user.nickname?.[0]}</div><div><h3 className="text-xl font-black">{user.nickname}</h3><p className="text-xs text-slate-400 font-mono">ID: {user.id.slice(-8)}</p></div></div><div className="grid grid-cols-2 gap-3"><div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800 text-center"><span className="text-[10px] font-black text-blue-600 uppercase block mb-1">Balance</span><span className="text-2xl font-black text-blue-700 dark:text-blue-400">${user.balance}</span></div><div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 text-center"><span className="text-[10px] font-black text-slate-400 uppercase block mb-1">Status</span><span className="text-xs font-bold text-green-500 flex items-center justify-center gap-1 uppercase tracking-tighter"><Shield size={10}/> Pro Active</span></div></div><div className="space-y-2"><Button onClick={()=>{setIsProfileOpen(false); setIsRechargeOpen(true);}} className="w-full h-12 bg-slate-900 hover:bg-blue-600 text-white font-black rounded-xl shadow-xl transition-all">立即充值额度</Button>{user.role === 'admin' && <Button onClick={()=>{setIsProfileOpen(false); setIsAdminCardsOpen(true);}} variant="outline" className="w-full h-12 rounded-xl border-slate-200 font-bold">进入管理中心</Button>}<Button variant="ghost" onClick={()=>{localStorage.removeItem("my_ai_user"); window.location.reload();}} className="w-full text-red-500 font-bold hover:bg-red-50">退出当前账号</Button></div></div></DialogContent></Dialog>
+      <Dialog open={isRechargeOpen} onOpenChange={setIsRechargeOpen}><DialogContent className="max-w-sm rounded-3xl p-6"><h3 className="text-lg font-black mb-4 flex items-center gap-2"><Ticket/> 兑换卡密</h3><Input id="card-input" placeholder="请输入卡密代码" className="mb-4"/><Button onClick={redeemCard} className="w-full">立即兑换</Button></DialogContent></Dialog>
+      <Dialog open={isAdminCardsOpen} onOpenChange={setIsAdminCardsOpen}><DialogContent className="max-w-2xl rounded-3xl p-6 h-[80vh] flex flex-col"><div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black flex items-center gap-2"><CardIcon/> 卡密管理</h3><Button onClick={fetchCards} variant="outline" size="sm">刷新列表</Button></div><div className="grid grid-cols-3 gap-2 mb-6"><Input type="number" placeholder="金额" value={cardConfig.amount} onChange={e=>setCardConfig({...cardConfig, amount: Number(e.target.value)})}/><Input type="number" placeholder="数量" value={cardConfig.count} onChange={e=>setCardConfig({...cardConfig, count: Number(e.target.value)})}/><Button onClick={generateCards}>生成</Button></div><div className="flex-1 overflow-auto bg-slate-50 rounded-xl p-2 space-y-2">{cards.map((c:any)=>(<div key={c.id} className="flex justify-between p-3 bg-white rounded-lg text-xs shadow-sm"><span className="font-mono">{c.code}</span><span className="font-bold text-green-600">${c.amount}</span><span className={c.isUsed?'text-red-500':'text-green-500'}>{c.isUsed?'已使用':'未使用'}</span></div>))}</div></DialogContent></Dialog>
+      <Dialog open={isDocPreviewOpen} onOpenChange={setIsDocPreviewOpen}><DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto"><div className="prose dark:prose-invert p-6"><ReactMarkdown>{previewDocData || ""}</ReactMarkdown></div></DialogContent></Dialog>
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}><DialogContent className="max-w-[95vw] h-[90vh] p-0"><div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold flex items-center gap-2"><FileSpreadsheet className="text-green-600"/> 数据预览</h3><Button size="sm" onClick={()=>handleDownloadExcel(previewTableData || "")} className="bg-green-600 hover:bg-green-700 text-white gap-2 font-bold"><Download size={14}/> 下载 Excel</Button></div><div className="overflow-auto h-full p-4"><table className="min-w-full text-sm"><thead><tr>{previewTableData?.split('\n')[0].split(',').map((h,i)=>(<th key={i} className="px-4 py-2 bg-slate-100 border">{h}</th>))}</tr></thead><tbody>{previewTableData?.split('\n').slice(1).map((row,i)=>(<tr key={i}>{row.split(',').map((c,j)=>(<td key={j} className="px-4 py-2 border">{c}</td>))}</tr>))}</tbody></table></div></DialogContent></Dialog>
     </div>
   );
 }
