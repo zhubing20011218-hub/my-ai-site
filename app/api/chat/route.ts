@@ -9,39 +9,27 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || "MISSING_KEY",
 });
 
-// ✅ 设置 Node.js 运行环境
 export const runtime = "nodejs"; 
-// ✅ 尝试放宽函数超时时间 (Pro账号有效)
-export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
 
 // ---------------------------------------------------------
-// 1. GET 方法：专门用于前端轮询查询任务状态
+// 1. GET: 查询任务状态 (解决 504 超时)
 // ---------------------------------------------------------
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
-    
     if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
     try {
-        // 去 Replicate 查一下任务现在的状态
         const prediction = await replicate.predictions.get(id);
-        
-        // 只有当任务成功或失败时，才算结束
-        return NextResponse.json({
-            id: prediction.id,
-            status: prediction.status, // starting, processing, succeeded, failed
-            output: prediction.output,
-            error: prediction.error
-        });
+        return NextResponse.json(prediction);
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
 
 // ---------------------------------------------------------
-// 2. POST 方法：创建任务 (立即返回 ID，不傻等)
+// 2. POST: 提交任务
 // ---------------------------------------------------------
 export async function POST(req: Request) {
   try {
@@ -51,38 +39,36 @@ export async function POST(req: Request) {
     const prompt = typeof lastMessage.content === 'string' ? lastMessage.content : lastMessage.content.text;
 
     // ============================================================
-    // 🎬 视频生成 (异步模式 - 解决 504 超时)
+    // 🎬 视频生成 (异步模式)
     // ============================================================
     if (model === 'sora-v1' || model === 'veo-google') {
         if (!process.env.REPLICATE_API_TOKEN) throw new Error("Replicate API Key 未配置");
         
         let prediction;
 
-        // 👉 模式 A：图生视频 (Image-to-Video)
+        // 👉 情况 A：图生视频 (Image-to-Video)
+        // 修复：改用 I2VGen-XL，参数更少更稳定，解决 422 错误
         if (image) {
-            console.log("🚀 Creating SVD Image-to-Video Task...");
-            // 使用 SVD 1.1 官方验证过的 Hash，修复 422 错误
+            console.log("🚀 Creating I2VGen-XL Task...");
             prediction = await replicate.predictions.create({
-                version: "3f0457e4619daac51203dedb472816f3af343739541c338029d5006d99723225", // SVD XT 1.1
+                version: "5821a338d0003352160bab388d4074bfc86387928505630247492c093a8d94c1", // I2VGen-XL
                 input: {
-                    input_image: image,
-                    video_length: "14_frames_with_svd_xt", // 更加稳定的帧数设置
-                    sizing_strategy: "maintain_aspect_ratio",
-                    frames_per_second: 6,
-                    motion_bucket_id: 127,
-                    cond_aug: 0.02
+                    image: image, // 这里参数名是 image，不是 input_image
+                    prompt: prompt || "High quality video", // 必须有提示词
+                    max_frames: 16,
+                    num_inference_steps: 50
                 }
             });
         } 
-        // 👉 模式 B：文生视频 (Text-to-Video)
+        // 👉 情况 B：文生视频 (Zeroscope)
         else {
-            console.log("🚀 Creating Zeroscope Text-to-Video Task...");
-            // Zeroscope XL
+            console.log("🚀 Creating Zeroscope Task...");
+            // 使用 Zeroscope V2 XL
             prediction = await replicate.predictions.create({
                 version: "9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
                 input: {
                     prompt: prompt,
-                    num_frames: 24, // 保持默认以确保稳定性
+                    num_frames: 24,
                     width: 1024,
                     height: 576,
                     fps: 24
@@ -90,7 +76,6 @@ export async function POST(req: Request) {
             });
         }
 
-        // ⚡️ 关键：立即返回任务 ID，让前端去轮询
         return NextResponse.json({ 
             type: 'async_job', 
             id: prediction.id, 
@@ -99,7 +84,7 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🎨 图片生成 (同步模式 - 因为很快)
+    // 🎨 图片生成 (同步模式)
     // ============================================================
     if (model === 'banana-sdxl') {
         const output: any = await replicate.run(
@@ -110,7 +95,7 @@ export async function POST(req: Request) {
     }
 
     // ============================================================
-    // 🧠 聊天模型 (Gemini - 流式)
+    // 🧠 聊天模型 (Gemini)
     // ============================================================
     let targetModel = 'gemini-2.5-flash'; 
     if (model === 'gemini-2.0-flash-exp') targetModel = 'gemini-2.5-flash'; 
@@ -140,15 +125,11 @@ export async function POST(req: Request) {
 
     const stream = new ReadableStream({
       async start(controller) {
-        try {
-            for await (const chunk of result.stream) {
-              const chunkText = chunk.text();
-              if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
-            }
-            controller.close();
-        } catch (e) {
-            controller.close();
+        for await (const chunk of result.stream) {
+          const chunkText = chunk.text();
+          if (chunkText) controller.enqueue(new TextEncoder().encode(chunkText));
         }
+        controller.close();
       },
     });
 
@@ -156,7 +137,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
-    // 返回 JSON 格式错误以便前端展示
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

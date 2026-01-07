@@ -33,7 +33,6 @@ const MODEL_PRICING: Record<string, number> = {
   "banana-sdxl": 0.20,
 };
 
-// 视频参数配置
 const ASPECT_RATIOS = [
     { label: "16:9", value: "16:9", icon: Monitor, desc: "横屏" },
     { label: "9:16", value: "9:16", icon: Smartphone, desc: "竖屏" },
@@ -46,11 +45,13 @@ const ASPECT_RATIOS = [
 const RESOLUTIONS = [
     { label: "720p (高清)", value: "720p" },
     { label: "1080p (全高清)", value: "1080p" },
+    { label: "2K (超清)", value: "2k" },
 ];
 
 const DURATIONS = [
     { label: "5秒", value: 5 },
     { label: "10秒", value: 10 },
+    { label: "15秒", value: 15 },
 ];
 
 const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'success' | 'error', show: boolean }) => {
@@ -70,7 +71,6 @@ const Toast = ({ message, type, show }: { message: string, type: 'loading' | 'su
   );
 };
 
-// ... Thinking, AuthPage 组件保持不变 ...
 function Thinking({ modelName }: { modelName: string }) {
     const [major, setMajor] = useState(0);
     const [minor, setMinor] = useState(-1);
@@ -218,7 +218,8 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               img.src = event.target?.result as string;
               img.onload = () => {
                   const canvas = document.createElement('canvas');
-                  const MAX_WIDTH = 512;  // 降到 512，对视频参考来说足够了，且安全
+                  // 强制缩小到 512px，保证体积 < 500KB，绝对安全
+                  const MAX_WIDTH = 512;
                   const MAX_HEIGHT = 512;
                   let width = img.width;
                   let height = img.height;
@@ -272,7 +273,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     setResult(null);
 
     try {
-      // 1. 发起任务
+      // 1. 发起任务 (返回任务 ID)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -298,7 +299,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               let jobStatus = data.status;
               let finalOutput = null;
 
-              // 循环查询，直到成功
+              // 循环检查，直到成功或失败
               while (jobStatus !== 'succeeded' && jobStatus !== 'failed' && jobStatus !== 'canceled') {
                   await new Promise(r => setTimeout(r, 4000)); // 每4秒查一次
                   
@@ -314,6 +315,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
               }
 
               if (finalOutput) {
+                  // 视频模型可能返回 [url] 数组或 url 字符串
                   const url = Array.isArray(finalOutput) ? finalOutput[0] : finalOutput;
                   setResult(url);
                   showToast('success', '生成完毕！');
@@ -325,7 +327,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
           } else {
               // 错误处理
               const errMsg = data.error || "请求失败";
-              if(errMsg.includes("413")) alert("图片仍然过大，请换一张更小的图试");
+              if(errMsg.includes("413")) alert("图片仍然过大，请换一张更小的图重试");
               else alert(errMsg);
           }
       } else {
@@ -351,7 +353,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   const handleForceDownload = async () => {
     if (!result) return;
     window.open(result, '_blank');
-    showToast('success', '正在下载...');
+    showToast('success', '正在尝试打开下载链接...');
   };
 
   return (
@@ -489,7 +491,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
 
              {result && !isGenerating && (
                 <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-500 relative">
-                    {/* ✅ 根据 URL 后缀或 type 严格判断，防止 video 变 image */}
+                    {/* ✅ 根据结果类型或后缀判断显示 video 还是 img */}
                     {type === 'video' || (typeof result === 'string' && result.endsWith('.mp4')) ? (
                         <video controls src={result} className="max-w-full max-h-full rounded-2xl shadow-2xl border border-white/10" autoPlay loop />
                     ) : (
@@ -503,7 +505,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
   );
 }
 
-// ... Home 组件主体 (保持不变) ...
+// ... Home 组件主体 ...
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<TabType>('home');
