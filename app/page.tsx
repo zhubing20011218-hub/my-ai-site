@@ -263,7 +263,7 @@ function MediaGenerator({ type, onConsume, showToast }: { type: 'video' | 'image
     
     if (type === 'video') {
         const warning = refImage ? "图生视频模式" : "文生视频模式";
-        if(!confirm(`${warning}：生成需 1-3 分钟，请勿刷新页面。确认继续？`)) return;
+        if(!confirm(`${warning}：生成需 1-3 分钟，期间请勿关闭页面。确认继续？`)) return;
     }
 
     const success = await onConsume(cost, `使用 ${model} 生成${type === 'video' ? '视频' : '图片'}`);

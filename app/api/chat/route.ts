@@ -10,10 +10,11 @@ const replicate = new Replicate({
 });
 
 export const runtime = "nodejs"; 
+export const maxDuration = 300; 
 export const dynamic = 'force-dynamic';
 
 // ---------------------------------------------------------
-// 1. GET: 查询任务状态 (解决 504 超时)
+// 1. GET: 查询任务状态 (轮询接口)
 // ---------------------------------------------------------
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
@@ -22,7 +23,14 @@ export async function GET(req: Request) {
 
     try {
         const prediction = await replicate.predictions.get(id);
-        return NextResponse.json(prediction);
+        
+        // 只有当任务成功或失败时，才算结束
+        return NextResponse.json({
+            id: prediction.id,
+            status: prediction.status, // starting, processing, succeeded, failed
+            output: prediction.output,
+            error: prediction.error
+        });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
@@ -47,35 +55,42 @@ export async function POST(req: Request) {
         let prediction;
 
         // 👉 情况 A：图生视频 (Image-to-Video)
-        // 修复：改用 I2VGen-XL，参数更少更稳定，解决 422 错误
         if (image) {
-            console.log("🚀 Creating I2VGen-XL Task...");
+            console.log("🚀 Creating SVD Task (Img2Video)...");
+            // ✅ 修复：使用官方验证过的 SVD XT 1.1 版本 Hash
             prediction = await replicate.predictions.create({
-                version: "5821a338d0003352160bab388d4074bfc86387928505630247492c093a8d94c1", // I2VGen-XL
+                version: "3f0457e4619daac51203dedb472816f3af343739541c338029d5006d99723225", 
                 input: {
-                    image: image, // 这里参数名是 image，不是 input_image
-                    prompt: prompt || "High quality video", // 必须有提示词
-                    max_frames: 16,
-                    num_inference_steps: 50
+                    input_image: image,
+                    video_length: "14_frames_with_svd_xt", // 14帧最稳，生成约2-3秒
+                    frames_per_second: 6,
+                    motion_bucket_id: 127,
+                    cond_aug: 0.02
                 }
             });
         } 
-        // 👉 情况 B：文生视频 (Zeroscope)
+        // 👉 情况 B：文生视频 (Text-to-Video)
         else {
-            console.log("🚀 Creating Zeroscope Task...");
-            // 使用 Zeroscope V2 XL
+            console.log("🚀 Creating Zeroscope Task (Text2Video)...");
+            
+            // 计算宽高 (Zeroscope 限制)
+            let width = 1024, height = 576;
+            if (resolution === '1080p') { width = 1024; height = 576; } // 强制降级到模型支持的最大值，防止崩坏
+            
+            // ✅ 修复：使用 Zeroscope V2 XL 官方 Hash
             prediction = await replicate.predictions.create({
                 version: "9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351",
                 input: {
                     prompt: prompt,
-                    num_frames: 24,
-                    width: 1024,
-                    height: 576,
-                    fps: 24
+                    num_frames: 24, // 24帧，约3-4秒
+                    width: width,
+                    height: height,
+                    fps: 12 // 降低 fps 以延长播放时间
                 }
             });
         }
 
+        // ⚡️ 立即返回任务 ID
         return NextResponse.json({ 
             type: 'async_job', 
             id: prediction.id, 
@@ -137,6 +152,7 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error("API Error:", error);
+    // 返回 JSON 格式错误以便前端展示
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
